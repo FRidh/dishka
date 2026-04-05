@@ -50,12 +50,19 @@ test = [
     "pytest-repeat==0.9.*",
     "pytest-cov==7.*",
 ]
+docs = [
+    "sphinx>=7.0",
+    "sphinx-copybutton>=0.5",
+    "sphinx-design>=0.5",
+    "furo>=2024.0",
+]
 dev = [
     { include-group = "ci" },
     { include-group = "test" },
     { include-group = "typos" },
     { include-group = "zizmor" },
     { include-group = "ast-grep" },
+    { include-group = "docs" },
     "trio>=0.33.0",
 ]
 
