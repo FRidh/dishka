@@ -33,6 +33,7 @@ class Factory(FactoryData):
         "cache",
         "connected_factories",
         "dependencies",
+        "executor",
         "is_to_bind",
         "kw_dependencies",
         "when_active",
@@ -55,6 +56,7 @@ class Factory(FactoryData):
         when_active: BaseMarker | None,
         when_component: Component | None,
         when_dependencies: Sequence[Factory],
+        executor: str | None = None,
     ) -> None:
         """
 
@@ -70,6 +72,7 @@ class Factory(FactoryData):
         :param when_active: condition to check availability
         :param when_component: component of conditions
         :param when_dependencies: deps for conditional creation
+        :param executor: optional executor tag for routing
         """
         super().__init__(
             source=source,
@@ -85,6 +88,7 @@ class Factory(FactoryData):
         self.when_active = when_active
         self.when_component = when_component
         self.when_dependencies = when_dependencies
+        self.executor = executor
 
     def __get__(self, instance: Any, owner: Any) -> Factory:
         scope = self.scope or getattr(instance, "scope", None)
@@ -110,6 +114,7 @@ class Factory(FactoryData):
             when_active=when_active,
             when_component=self.when_component,
             when_dependencies=self.when_dependencies,
+            executor=self.executor,
         )
 
     def with_component(self, component: Component) -> Factory:
@@ -135,6 +140,7 @@ class Factory(FactoryData):
                 else self.when_component
             ),
             when_dependencies=self.when_dependencies,
+            executor=self.executor,
         )
 
     def with_scope(self, scope: BaseScope) -> Factory:
@@ -151,6 +157,7 @@ class Factory(FactoryData):
             when_active=self.when_active,
             when_component=self.when_component,
             when_dependencies=self.when_dependencies,
+            executor=self.executor,
         )
 
     def replace(
@@ -178,4 +185,5 @@ class Factory(FactoryData):
                 when_dependencies,
                 self.when_dependencies,
             ),
+            executor=self.executor,
         )

@@ -44,6 +44,7 @@ ExitCallable = Callable[
 class Container:
     __slots__ = (
         "_cache",
+        "_concurrency",
         "_context",
         "_exits",
         "lock",
@@ -63,11 +64,13 @@ class Container:
             ] | None,
             parent_closer: ExitCallable | None,
             parent_getter: Callable[[CompilationKey], Any] | None,
+            concurrency: Any | None = None,
     ) -> None:
         self.registry = registry
         self._context = context
         self._cache: dict[Any, object] = {}
         self.parent_container = parent_container
+        self._concurrency = concurrency
 
         self.lock: AbstractContextManager[Any] | None
         if lock_factory is None:
@@ -116,6 +119,7 @@ class Container:
             lock_factory,
             None,
             self._get,
+            concurrency=self._concurrency,
         )
         if scope is None:
             while registry.scope.skip:
@@ -129,6 +133,7 @@ class Container:
                     lock_factory,
                     child.__exit__,
                     child._get,
+                    concurrency=self._concurrency,
                 )
         else:
             while registry.scope is not scope:
@@ -142,6 +147,7 @@ class Container:
                     lock_factory,
                     child.__exit__,
                     child._get,
+                    concurrency=self._concurrency,
                 )
         return child
 
@@ -319,6 +325,7 @@ def make_container(
         skip_validation: bool = False,
         start_scope: BaseScope | None = None,
         validation_settings: ValidationSettings = DEFAULT_VALIDATION,
+        concurrency: Any | None = None,
 ) -> Container:
     context_provider = make_root_context_provider(providers, context, scopes)
     has_provider = HasProvider()
@@ -341,6 +348,7 @@ def make_container(
         parent_getter=None,
         parent_closer=None,
         parent_container=None,
+        concurrency=concurrency,
     )
     if start_scope is None:
         while container.registry.scope.skip:
@@ -353,6 +361,7 @@ def make_container(
                 lock_factory=lock_factory,
                 parent_closer=container.__exit__,
                 parent_getter=container._get,  # noqa: SLF001
+                concurrency=concurrency,
             )
     else:
         while container.registry.scope is not start_scope:
@@ -368,6 +377,7 @@ def make_container(
                 lock_factory=lock_factory,
                 parent_closer=container.__exit__,
                 parent_getter=container._get,  # noqa: SLF001
+                concurrency=concurrency,
             )
     return container
 

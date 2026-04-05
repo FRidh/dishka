@@ -43,6 +43,7 @@ ExitCallable = Callable[
 class AsyncContainer:
     __slots__ = (
         "_cache",
+        "_concurrency",
         "_context",
         "_exits",
         "lock",
@@ -62,11 +63,13 @@ class AsyncContainer:
             ] | None,
             parent_closer: ExitCallable | None,
             parent_getter:  Callable[[CompilationKey], Any] | None,
+            concurrency: Any | None = None,
     ) -> None:
         self.registry = registry
         self._context = context
         self._cache: dict[Any, object] = {}
         self.parent_container = parent_container
+        self._concurrency = concurrency
 
         self.lock: AbstractAsyncContextManager[Any] | None
         if lock_factory is None:
@@ -115,6 +118,7 @@ class AsyncContainer:
             lock_factory,
             None,
             self._get,
+            concurrency=self._concurrency,
         )
         if scope is None:
             while registry.scope.skip:
@@ -128,6 +132,7 @@ class AsyncContainer:
                     lock_factory,
                     child.__aexit__,
                     child._get,
+                    concurrency=self._concurrency,
                 )
         else:
             while registry.scope is not scope:
@@ -141,6 +146,7 @@ class AsyncContainer:
                     lock_factory,
                     child.__aexit__,
                     child._get,
+                    concurrency=self._concurrency,
                 )
         return child
 
@@ -410,6 +416,7 @@ def make_async_container(
         skip_validation: bool = False,
         start_scope: BaseScope | None = None,
         validation_settings: ValidationSettings = DEFAULT_VALIDATION,
+        concurrency: Any | None = None,
 ) -> AsyncContainer:
     context_provider = make_root_context_provider(providers, context, scopes)
     has_provider = HasProvider()
@@ -433,6 +440,7 @@ def make_async_container(
         parent_getter=None,
         parent_closer=None,
         parent_container=None,
+        concurrency=concurrency,
     )
     if start_scope is None:
         while container.registry.scope.skip:
@@ -445,6 +453,7 @@ def make_async_container(
                 lock_factory=lock_factory,
                 parent_closer=container.__aexit__,
                 parent_getter=container._get,  # noqa: SLF001
+                concurrency=concurrency,
             )
     else:
         while container.registry.scope is not start_scope:
@@ -460,6 +469,7 @@ def make_async_container(
                 lock_factory=lock_factory,
                 parent_closer=container.__aexit__,
                 parent_getter=container._get,  # noqa: SLF001
+                concurrency=concurrency,
             )
     return container
 

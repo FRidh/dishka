@@ -32,9 +32,14 @@ mypy src/dishka
 
 **Install dev dependencies:**
 ```bash
-pip install -e ".[dev]"
-# or with uv (preferred in CI)
 uv sync
+```
+
+**Running commands:** Always use `uv run` to execute Python, pytest, ruff, mypy, etc:
+```bash
+uv run pytest tests/unit
+uv run ruff check src/
+uv run mypy src/dishka
 ```
 
 ## Architecture
