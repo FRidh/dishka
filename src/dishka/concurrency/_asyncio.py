@@ -70,11 +70,16 @@ class AsyncioSemaphoreStrategy:
             async with sem:
                 results[idx] = await factory()
 
-        async with asyncio.TaskGroup() as tg:
-            for i, (_key, factory, _ex) in enumerate(
-                factories,
-            ):
-                tg.create_task(_wrapped(i, factory))
+        try:
+            async with asyncio.TaskGroup() as tg:
+                for i, (_key, factory, _ex) in enumerate(
+                    factories,
+                ):
+                    tg.create_task(_wrapped(i, factory))
+        except BaseException as exc:
+            if isinstance(exc, ExceptionGroup) and len(exc.exceptions) == 1:
+                raise exc.exceptions[0] from exc.__cause__
+            raise
 
         return results
 
@@ -172,34 +177,50 @@ def _compile_asyncio_semaphore_layer(
         "container",
         "has",
     ]
+    eg_name = builder.global_(
+        ExceptionGroup,
+        "ExceptionGroup",
+    )
+
     with builder.def_("_concurrent_layer", args):
         builder.assign_local(
             "sem",
             builder.call(sem_cls, max_c),
         )
-        with builder.with_(
-            builder.call(tg_name),
-            "tg",
-            is_async=True,
-        ):
-            for idx, name in enumerate(factory_names):
-                wrapper = f"_wrap_{idx}"
-                with (
-                    builder.def_(wrapper, []),
-                    builder.with_(
-                        "sem",
-                        is_async=True,
-                    ),
-                ):
+        with builder.try_():
+            with builder.with_(
+                builder.call(tg_name),
+                "tg",
+                is_async=True,
+            ):
+                for idx, name in enumerate(factory_names):
+                    wrapper = f"_wrap_{idx}"
+                    with (
+                        builder.def_(wrapper, []),
+                        builder.with_(
+                            "sem",
+                            is_async=True,
+                        ),
+                    ):
+                        builder.statement(
+                            f"await {name}("
+                            f"getter, exits, cache, "
+                            f"context, container, "
+                            f"has)",
+                        )
                     builder.statement(
-                        f"await {name}("
-                        f"getter, exits, cache, "
-                        f"context, container, "
-                        f"has)",
+                        f"tg.create_task({wrapper}())",
                     )
+        with builder.except_(BaseException, as_="exc"):  # type: ignore[arg-type]
+            with builder.if_(
+                f"isinstance(exc, {eg_name}) "
+                f"and len(exc.exceptions) == 1",
+            ):
                 builder.statement(
-                    f"tg.create_task({wrapper}())",
+                    "raise exc.exceptions[0] "
+                    "from exc.__cause__",
                 )
+            builder.raise_()
 
     ns = builder.compile(
         "<concurrent_asyncio_semaphore_layer>",
