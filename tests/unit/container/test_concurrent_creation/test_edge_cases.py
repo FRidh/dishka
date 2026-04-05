@@ -128,7 +128,7 @@ class TestGeneratorSetupError:
             @provide
             async def a(self) -> AsyncIterator[A]:
                 raise ValueError("setup error")
-                yield  # noqa: unreachable
+                yield
 
             @provide
             async def b(self) -> B:

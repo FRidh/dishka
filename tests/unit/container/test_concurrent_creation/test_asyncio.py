@@ -1,14 +1,12 @@
-"""Tests for async concurrent resolution with AsyncioStrategy."""
+"""Asyncio-specific tests (barrier proof, cancellation, sequential)."""
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
 from typing import Any
 
 import pytest
 
 from dishka import (
-    AsyncContainer,
     AsyncioStrategy,
     Provider,
     Scope,
@@ -23,7 +21,7 @@ def strategy() -> AsyncioStrategy:
 
 
 class TestConcurrentExecution:
-    """T011: Two independent async factories execute concurrently."""
+    """Two independent async factories execute concurrently (barrier)."""
 
     @pytest.mark.asyncio()
     async def test_independent_factories_overlap(
@@ -61,7 +59,7 @@ class TestConcurrentExecution:
 
 
 class TestSequentialWithoutConcurrency:
-    """T013: No concurrency config => identical sequential behavior."""
+    """No concurrency config => identical sequential behavior."""
 
     @pytest.mark.asyncio()
     async def test_sequential_no_concurrency(self) -> None:
@@ -92,40 +90,8 @@ class TestSequentialWithoutConcurrency:
         assert "root" in call_order
 
 
-class TestErrorPropagation:
-    """T014: Factory error propagates, no background tasks remain."""
-
-    @pytest.mark.asyncio()
-    async def test_factory_error_propagates(
-        self, strategy: AsyncioStrategy,
-    ) -> None:
-        class MyProvider(Provider):
-            scope = Scope.APP
-
-            @provide
-            async def a(self) -> int:
-                raise ValueError("boom")
-
-            @provide
-            async def b(self) -> str:
-                await asyncio.sleep(10)
-                return "hello"
-
-            @provide
-            async def root(self, a: int, b: str) -> list[Any]:
-                return [a, b]
-
-        container = make_async_container(
-            MyProvider(),
-            concurrency=strategy,
-        )
-        async with container() as scope:
-            with pytest.raises(ValueError, match="boom"):
-                await scope.get(list[Any])
-
-
 class TestCancellationSafety:
-    """T015: Parent task cancellation cancels in-progress factories."""
+    """Parent task cancellation cancels in-progress factories."""
 
     @pytest.mark.asyncio()
     async def test_cancellation_propagates(
@@ -152,32 +118,3 @@ class TestCancellationSafety:
             task.cancel()
             with pytest.raises(asyncio.CancelledError):
                 await task
-
-
-class TestAsyncGeneratorFactories:
-    """T016: Generator factories yield, register cleanup, finalize."""
-
-    @pytest.mark.asyncio()
-    async def test_generator_cleanup(
-        self, strategy: AsyncioStrategy,
-    ) -> None:
-        cleanup_called = False
-
-        class MyProvider(Provider):
-            scope = Scope.APP
-
-            @provide
-            async def a(self) -> AsyncIterator[int]:
-                nonlocal cleanup_called
-                yield 42
-                cleanup_called = True
-
-        container = make_async_container(
-            MyProvider(),
-            concurrency=strategy,
-        )
-        async with container:
-            result = await container.get(int)
-            assert result == 42
-            assert not cleanup_called
-        assert cleanup_called

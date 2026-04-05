@@ -7,6 +7,7 @@ from typing import Any, NewType
 import pytest
 
 from dishka import (
+    AsyncioStrategy,
     Provider,
     Scope,
     make_async_container,
@@ -135,7 +136,7 @@ class TestNonDispatchStrategy:
                 ],
             ) -> Sequence[object]:
                 results: list[object] = [None] * len(factories)
-                for i, (key, factory, _executor) in enumerate(
+                for i, (_key, factory, _executor) in enumerate(
                     factories,
                 ):
                     results[i] = await factory()
@@ -211,8 +212,6 @@ class TestUnrecognizedExecutorTag:
     @pytest.mark.asyncio
     async def test_unknown_tag_no_error(self) -> None:
         """Built-in strategies accept unknown tags without error."""
-        from dishka.concurrency._asyncio import AsyncioStrategy
-
         class MyProvider(Provider):
             scope = Scope.APP
 

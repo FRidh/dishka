@@ -1,8 +1,7 @@
-"""T012: Diamond deduplication with async concurrent resolution."""
+"""Asyncio-specific diamond test with barrier proof of concurrency."""
 from __future__ import annotations
 
 import asyncio
-from typing import Any, NewType
 
 import pytest
 
@@ -13,11 +12,7 @@ from dishka import (
     make_async_container,
     provide,
 )
-
-Leaf = NewType("Leaf", int)
-A = NewType("A", int)
-B = NewType("B", int)
-Root = NewType("Root", list)
+from .conftest import A, B, Leaf, Root
 
 
 class TestDiamondDeduplication:

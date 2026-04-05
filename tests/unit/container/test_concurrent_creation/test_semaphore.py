@@ -1,4 +1,4 @@
-"""Tests for AsyncioSemaphoreStrategy limiting."""
+"""Semaphore-specific tests (throttling, no-throttling comparison)."""
 from __future__ import annotations
 
 import asyncio
@@ -22,7 +22,7 @@ D = NewType("D", int)
 
 
 class TestSemaphoreLimiting:
-    """T020: At most N factories run simultaneously."""
+    """At most N factories run simultaneously."""
 
     @pytest.mark.asyncio()
     async def test_at_most_n_concurrent(self) -> None:
@@ -35,8 +35,7 @@ class TestSemaphoreLimiting:
             nonlocal peak, current
             async with lock:
                 current += 1
-                if current > peak:
-                    peak = current
+                peak = max(peak, current)
             await asyncio.sleep(0.01)
             async with lock:
                 current -= 1
@@ -81,7 +80,7 @@ class TestSemaphoreLimiting:
 
 
 class TestNoThrottling:
-    """T021: AsyncioStrategy has no throttling."""
+    """AsyncioStrategy has no throttling (all concurrent)."""
 
     @pytest.mark.asyncio()
     async def test_all_concurrent_without_limit(self) -> None:

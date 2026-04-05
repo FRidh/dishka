@@ -3,8 +3,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import pytest
-
 from dishka.concurrency._layers import compute_topological_layers
 from dishka.dependency_source.factory import Factory
 from dishka.entities.component import DEFAULT_COMPONENT
