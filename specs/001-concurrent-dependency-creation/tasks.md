@@ -78,12 +78,12 @@
 
 ### Tests for User Story 2
 
-- [ ] T020 [P] [US2] Test semaphore limiting: configure limit N, provide N+2 factories, verify at most N concurrent via counter/lock in tests/unit/container/test_concurrent_creation/test_semaphore.py — covers acceptance scenario 1
-- [ ] T021 [P] [US2] Test no throttling when no limit configured (AsyncioStrategy) in tests/unit/container/test_concurrent_creation/test_semaphore.py — covers acceptance scenario 2
+- [x] T020 [P] [US2] Test semaphore limiting: configure limit N, provide N+2 factories, verify at most N concurrent via counter/lock in tests/unit/container/test_concurrent_creation/test_semaphore.py — covers acceptance scenario 1
+- [x] T021 [P] [US2] Test no throttling when no limit configured (AsyncioStrategy) in tests/unit/container/test_concurrent_creation/test_semaphore.py — covers acceptance scenario 2
 
 ### Implementation for User Story 2
 
-- [ ] T022 [US2] Implement `AsyncioSemaphoreStrategy` with `run()` method wrapping each task with `asyncio.Semaphore` in src/dishka/concurrency/_asyncio.py
+- [x] T022 [US2] Implement `AsyncioSemaphoreStrategy` with `run()` method wrapping each task with `asyncio.Semaphore` in src/dishka/concurrency/_asyncio.py
 
 **Checkpoint**: Semaphore-bounded concurrency works. At most N factories run simultaneously.
 
