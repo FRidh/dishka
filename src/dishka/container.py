@@ -196,6 +196,12 @@ class Container:
             return self._get_unlocked(key)
 
     def _get_unlocked(self, key: CompilationKey) -> Any:
+        if self._concurrency is not None:
+            return self._get_concurrent(key)
+
+        return self._get_sequential(key)
+
+    def _get_sequential(self, key: CompilationKey) -> Any:
         compiled = self.registry.get_compiled(key)
         if compiled is None:
             if self.parent_getter is None:
@@ -234,6 +240,73 @@ class Container:
             self,
             self._has,
         )
+
+    def _get_concurrent(self, key: CompilationKey) -> Any:
+        from dishka.concurrency._layers import (
+            compute_topological_layers,
+        )
+
+        dep_key = compilation_to_dependency_key(key)
+        factory = self.registry.get_factory(dep_key)
+        if factory is None or factory.scope != self.registry.scope:
+            return self._get_sequential(key)
+
+        layers = compute_topological_layers(
+            self.registry, dep_key, self._cache,
+        )
+        if not layers:
+            comp_key = dep_key.as_compilation_key()
+            if comp_key in self._cache:
+                return self._cache[comp_key]
+            return self._cache[key]
+
+        strategy = self._concurrency
+        for layer in layers:
+            if len(layer) == 1:
+                dk, _factory = layer[0]
+                compiled = self.registry.get_compiled(
+                    dk.as_compilation_key(),
+                )
+                if compiled is not None:
+                    compiled(
+                        self.parent_getter,
+                        self._exits,
+                        self._cache,
+                        self._context,
+                        self,
+                        self._has,
+                    )
+            else:
+                callables = []
+                for dk, _factory in layer:
+                    comp_key = dk.as_compilation_key()
+                    compiled = (
+                        self.registry.get_compiled(comp_key)
+                    )
+                    if compiled is None:
+                        continue
+
+                    def _invoke(
+                        c: Any = compiled,
+                    ) -> object:
+                        return c(
+                            self.parent_getter,
+                            self._exits,
+                            self._cache,
+                            self._context,
+                            self,
+                            self._has,
+                        )
+
+                    callables.append((dk, _invoke))
+
+                if callables:
+                    strategy.run(callables)
+
+        comp_key = dep_key.as_compilation_key()
+        if comp_key in self._cache:
+            return self._cache[comp_key]
+        return self._cache.get(key)
 
     def close(self, exception: BaseException | None = None) -> None:
         self.__exit__(None, exception, None)

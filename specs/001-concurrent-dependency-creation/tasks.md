@@ -97,16 +97,16 @@
 
 ### Tests for User Story 3
 
-- [ ] T023 [P] [US3] Test thread pool concurrent execution with barrier-based overlap proof in tests/unit/container/test_concurrent_creation/test_sync.py — covers acceptance scenario 1
-- [ ] T024 [P] [US3] Test process pool: plain factories in pool, generator factories sequential in calling process in tests/unit/container/test_concurrent_creation/test_sync.py — covers acceptance scenario 2
-- [ ] T025 [P] [US3] Test thread pool error propagation: factory raises, no threads left running in tests/unit/container/test_concurrent_creation/test_sync.py — covers acceptance scenario 3
-- [ ] T026 [P] [US3] Test sequential behavior without executor configured (no regression) in tests/unit/container/test_concurrent_creation/test_sync.py — covers acceptance scenario 4
+- [x] T023 [P] [US3] Test thread pool concurrent execution with barrier-based overlap proof in tests/unit/container/test_concurrent_creation/test_sync.py — covers acceptance scenario 1
+- [x] T024 [P] [US3] Test process pool: plain factories in pool, generator factories sequential in calling process in tests/unit/container/test_concurrent_creation/test_sync.py — covers acceptance scenario 2
+- [x] T025 [P] [US3] Test thread pool error propagation: factory raises, no threads left running in tests/unit/container/test_concurrent_creation/test_sync.py — covers acceptance scenario 3
+- [x] T026 [P] [US3] Test sequential behavior without executor configured (no regression) in tests/unit/container/test_concurrent_creation/test_sync.py — covers acceptance scenario 4
 
 ### Implementation for User Story 3
 
-- [ ] T027 [US3] Implement `ThreadPoolStrategy` with `run()` method using `concurrent.futures.ThreadPoolExecutor` in src/dishka/concurrency/_sync.py
-- [ ] T028 [US3] Implement `ProcessPoolStrategy` with `run()` method using `concurrent.futures.ProcessPoolExecutor` in src/dishka/concurrency/_sync.py — partition generators to run locally, plain factories to pool
-- [ ] T029 [US3] Integrate concurrent resolution path into `Container._get_unlocked()` in src/dishka/container.py — when `_concurrency` is set: compute layers, dispatch via strategy.run(), write results to cache, register generators in _exits
+- [x] T027 [US3] Implement `ThreadPoolStrategy` with `run()` method using `concurrent.futures.ThreadPoolExecutor` in src/dishka/concurrency/_sync.py
+- [x] T028 [US3] Implement `ProcessPoolStrategy` with `run()` method using `concurrent.futures.ProcessPoolExecutor` in src/dishka/concurrency/_sync.py — partition generators to run locally, plain factories to pool
+- [x] T029 [US3] Integrate concurrent resolution path into `Container._get_unlocked()` in src/dishka/container.py — when `_concurrency` is set: compute layers, dispatch via strategy.run(), write results to cache, register generators in _exits
 
 **Checkpoint**: Sync concurrent resolution works with both thread pool and process pool. Generator synchronization points verified.
 
