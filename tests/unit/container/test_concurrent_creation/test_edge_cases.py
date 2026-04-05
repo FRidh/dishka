@@ -1,4 +1,5 @@
 """Edge case tests for concurrent resolution."""
+
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
@@ -17,6 +18,7 @@ from dishka.entities.key import DependencyKey
 
 A = NewType("A", int)
 B = NewType("B", int)
+C = NewType("C", int)
 
 
 class TestAllCached:
@@ -186,7 +188,167 @@ class TestStrategyRunError:
             concurrency=BuggyStrategy(),
         )
         with pytest.raises(
-            RuntimeError, match="strategy bug",
+            RuntimeError,
+            match="strategy bug",
         ):
             async with container:
                 await container.get(list[Any])
+
+
+class TestNoCacheCallsFactoryEachTime:
+    """cache=False factories are invoked on every get(), not reused."""
+
+    @pytest.mark.asyncio
+    async def test_uncached_called_every_time(self) -> None:
+        call_count = 0
+
+        class MyProvider(Provider):
+            scope = Scope.APP
+
+            @provide(cache=False)
+            async def a(self) -> A:
+                nonlocal call_count
+                call_count += 1
+                return A(call_count)
+
+        container = make_async_container(
+            MyProvider(),
+            concurrency=AsyncioStrategy(),
+        )
+        async with container:
+            r1 = await container.get(A)
+            r2 = await container.get(A)
+            assert r1 == 1
+            assert r2 == 2
+            assert call_count == 2
+
+
+class TestNoCacheConcurrentIndependent:
+    """Two independent cache=False factories resolved concurrently."""
+
+    @pytest.mark.asyncio
+    async def test_uncached_independent(self) -> None:
+        a_count = 0
+        b_count = 0
+
+        class MyProvider(Provider):
+            scope = Scope.APP
+
+            @provide(cache=False)
+            async def a(self) -> A:
+                nonlocal a_count
+                a_count += 1
+                return A(a_count)
+
+            @provide(cache=False)
+            async def b(self) -> B:
+                nonlocal b_count
+                b_count += 1
+                return B(b_count * 10)
+
+            @provide(cache=False)
+            async def root(self, a: A, b: B) -> list[Any]:
+                return [a, b]
+
+        container = make_async_container(
+            MyProvider(),
+            concurrency=AsyncioStrategy(),
+        )
+        async with container:
+            r1 = await container.get(list[Any])
+            r2 = await container.get(list[Any])
+            # Each resolution re-invokes all factories
+            assert r1 == [1, 10]
+            assert r2 == [2, 20]
+            assert a_count == 2
+            assert b_count == 2
+
+
+class TestMixedCacheConcurrent:
+    """Mix of cached and uncached deps in one concurrent graph."""
+
+    @pytest.mark.asyncio
+    async def test_mixed_cache(self) -> None:
+        a_count = 0
+        b_count = 0
+
+        class MyProvider(Provider):
+            scope = Scope.APP
+
+            @provide(cache=True)
+            async def a(self) -> A:
+                nonlocal a_count
+                a_count += 1
+                return A(a_count)
+
+            @provide(cache=False)
+            async def b(self) -> B:
+                nonlocal b_count
+                b_count += 1
+                return B(b_count * 10)
+
+            @provide(cache=False)
+            async def root(
+                self,
+                a: A,
+                b: B,
+            ) -> list[Any]:
+                return [a, b]
+
+        container = make_async_container(
+            MyProvider(),
+            concurrency=AsyncioStrategy(),
+        )
+        async with container:
+            r1 = await container.get(list[Any])
+            r2 = await container.get(list[Any])
+            # A is cached — created once, same value both times
+            # B is uncached — new value each time
+            assert r1 == [1, 10]
+            assert r2 == [1, 20]
+            assert a_count == 1
+            assert b_count == 2
+
+
+class TestNoCacheDiamond:
+    """Diamond with cache=False leaf: leaf created per dependent."""
+
+    @pytest.mark.asyncio
+    async def test_uncached_diamond(self) -> None:
+        leaf_count = 0
+
+        class MyProvider(Provider):
+            scope = Scope.APP
+
+            @provide(cache=False)
+            async def leaf(self) -> C:
+                nonlocal leaf_count
+                leaf_count += 1
+                return C(leaf_count)
+
+            @provide(cache=False)
+            async def a(self, c: C) -> A:
+                return A(c + 10)
+
+            @provide(cache=False)
+            async def b(self, c: C) -> B:
+                return B(c + 20)
+
+            @provide(cache=False)
+            async def root(
+                self,
+                a: A,
+                b: B,
+            ) -> list[Any]:
+                return [a, b]
+
+        container = make_async_container(
+            MyProvider(),
+            concurrency=AsyncioStrategy(),
+        )
+        async with container:
+            result = await container.get(list[Any])
+            # With cache=False, leaf is created for each
+            # dependent — a and b each get their own
+            assert leaf_count == 2
+            assert result == [11, 22]

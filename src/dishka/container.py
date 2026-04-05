@@ -265,6 +265,9 @@ class Container:
                 return self._cache[comp_key]
             return self._cache[key]
 
+        if not factory.cache:
+            return self._get_sequential(key)
+
         for layer in layers:
             self._dispatch_layer(layer)
 

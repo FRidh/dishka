@@ -333,6 +333,12 @@ class AsyncContainer:
                 return self._cache[comp_key]
             return self._cache[key]
 
+        if not factory.cache:
+            # cache=False root: resolve sequentially so that
+            # uncached deps aren't invoked twice (once in the
+            # layer dispatch and once inside the compiled root).
+            return await self._get_sequential(key)
+
         for layer in layers:
             await self._dispatch_layer(layer)
 
