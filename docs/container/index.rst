@@ -107,3 +107,22 @@ To prevent such a condition you need to protect any session whose children can b
 
 .. note::
     Do not worry, lock is set by default for top level (``Scope.APP``) container. So, if you are not using other scopes concurrently you do not need any changes. (E.g. if you are not using multiple ``Scope.ACTION`` containers at a same time within one ``Scope.REQUEST`` container).
+
+
+Concurrent dependency creation
+====================================
+
+The container can create independent dependencies in parallel
+when you pass a ``concurrency`` strategy:
+
+.. code-block:: python
+
+    from dishka import make_async_container, AsyncioStrategy
+
+    container = make_async_container(
+        provider,
+        concurrency=AsyncioStrategy(),
+    )
+
+See :ref:`concurrency` for available strategies, custom strategy
+protocols, and details on how it works.
