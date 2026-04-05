@@ -7,6 +7,8 @@ __all__ = [
     "AsyncioSemaphoreStrategy",
     "AsyncioStrategy",
     "BaseScope",
+    "CompilableAsyncStrategy",
+    "CompilableSyncStrategy",
     "Component",
     "Container",
     "DependencyKey",
@@ -46,6 +48,8 @@ from .container import Container, make_container
 from .entities.component import DEFAULT_COMPONENT, Component
 from .entities.concurrency import (
     AsyncConcurrencyStrategy,
+    CompilableAsyncStrategy,
+    CompilableSyncStrategy,
     SyncConcurrencyStrategy,
 )
 from .entities.depends_marker import FromDishka

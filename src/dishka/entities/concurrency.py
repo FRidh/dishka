@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable, Sequence
 from typing import Protocol, runtime_checkable
 
+from dishka.container_objects import CompiledFactory
 from dishka.entities.key import DependencyKey
 
 
@@ -21,6 +22,18 @@ class AsyncConcurrencyStrategy(Protocol):
 
 
 @runtime_checkable
+class CompilableAsyncStrategy(AsyncConcurrencyStrategy, Protocol):
+    """Async strategy that also supports codegen via compile()."""
+
+    def compile(
+        self,
+        compiled_factories: Sequence[
+            tuple[DependencyKey, CompiledFactory]
+        ],
+    ) -> CompiledFactory: ...
+
+
+@runtime_checkable
 class SyncConcurrencyStrategy(Protocol):
     def run(
         self,
@@ -32,3 +45,15 @@ class SyncConcurrencyStrategy(Protocol):
             ]
         ],
     ) -> Sequence[object]: ...
+
+
+@runtime_checkable
+class CompilableSyncStrategy(SyncConcurrencyStrategy, Protocol):
+    """Sync strategy that also supports codegen via compile()."""
+
+    def compile(
+        self,
+        compiled_factories: Sequence[
+            tuple[DependencyKey, CompiledFactory]
+        ],
+    ) -> CompiledFactory: ...

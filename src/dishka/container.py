@@ -6,6 +6,7 @@ from types import TracebackType
 from typing import Any, TypeVar, overload
 
 from dishka.entities.component import DEFAULT_COMPONENT, Component
+from dishka.entities.concurrency import CompilableSyncStrategy
 from dishka.entities.key import (
     CompilationKey,
     DependencyKey,
@@ -306,7 +307,7 @@ class Container:
             return
 
         strategy = self._concurrency
-        if hasattr(strategy, "compile"):
+        if isinstance(strategy, CompilableSyncStrategy):
             layer_fn = strategy.compile(
                 [(dk, c) for dk, c, _ex in compiled_pairs],
             )
