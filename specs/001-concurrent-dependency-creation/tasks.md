@@ -19,9 +19,9 @@
 
 **Purpose**: Create directory structure and foundational type definitions
 
-- [ ] T001 Create concurrency package directory at src/dishka/concurrency/__init__.py
-- [ ] T002 [P] Create entities/concurrency.py with AsyncConcurrencyStrategy and SyncConcurrencyStrategy protocols, ExecutorTag type, and re-exports in src/dishka/entities/concurrency.py
-- [ ] T003 [P] Create test directory at tests/unit/container/test_concurrency/__init__.py
+- [x] T001 Create concurrency package directory at src/dishka/concurrency/__init__.py
+- [x] T002 [P] Create entities/concurrency.py with AsyncConcurrencyStrategy and SyncConcurrencyStrategy protocols, ExecutorTag type, and re-exports in src/dishka/entities/concurrency.py
+- [x] T003 [P] Create test directory at tests/unit/container/test_concurrency/__init__.py
 
 ---
 
