@@ -93,6 +93,42 @@ async def main():
 trio.run(main)
 ```
 
+## Per-Factory Executor Dispatching
+
+```python
+from dishka import make_async_container, Provider, provide, Scope
+from dishka import AsyncioStrategy
+
+class MixedProvider(Provider):
+    scope = Scope.APP
+
+    # Tag factories with executor hints
+    @provide(executor="io")
+    async def get_db(self) -> Database:
+        return await Database.connect("postgres://...")
+
+    @provide(executor="io")
+    async def get_cache(self) -> Cache:
+        return await Cache.connect("redis://...")
+
+    @provide(executor="cpu")
+    async def compute_config(self) -> Config:
+        return await heavy_computation()
+
+    # No tag — uses strategy default
+    @provide
+    async def get_app(
+        self, db: Database, cache: Cache, config: Config,
+    ) -> App:
+        return App(db=db, cache=cache, config=config)
+
+# Built-in strategies route based on executor tags
+container = make_async_container(
+    MixedProvider(),
+    concurrency=AsyncioStrategy(),
+)
+```
+
 ## Custom Strategy
 
 ```python
@@ -115,6 +151,9 @@ class MyStrategy:
                 tasks.append(tg.create_task(factory()))
         return [t.result() for t in tasks]
 
+    # compile() is optional for custom strategies
+    # Without it, the container uses run() at resolution time
+
 container = make_async_container(
     MyProvider(),
     concurrency=MyStrategy(),
@@ -127,3 +166,5 @@ container = make_async_container(
 - **Automatic parallelism**: The container analyzes the dependency graph and identifies which factories can run concurrently. No changes to providers needed.
 - **Propagation**: Child scope containers inherit the concurrency strategy automatically.
 - **Generators work**: Generator factories (resource cleanup) work with all strategies. With `ProcessPoolStrategy`, generators run in the calling process.
+- **Per-factory dispatch**: Tag factories with `@provide(executor="tag")` to route them to specific executors. Strategies that don't support dispatch ignore the tag.
+- **Code generation**: Built-in strategies include `compile()` for optimized code emission at container creation time. Custom strategies can omit `compile()` — the container falls back to `run()`.

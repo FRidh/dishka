@@ -76,8 +76,7 @@ Dishka is a dependency injection (DI) framework for Python. The core idea: users
 - No linting on `src/dishka/_adaptix/` (vendored code)
 
 ## Active Technologies
-- Python ≥3.10 (project minimum); concurrent feature requires ≥3.11 for `asyncio.TaskGroup` + None new — stdlib only (`asyncio`, `concurrent.futures`, `contextvars`); `trio` optional for trio strategy (001-concurrent-dependency-creation)
-- Python 3.11+ (uses `asyncio.TaskGroup`; project minimum remains 3.10 — concurrency feature raises at construction on < 3.11) + None new — stdlib only (`asyncio`, `concurrent.futures`, `contextvars`); `trio` optional for trio strategy (001-concurrent-dependency-creation)
+- Python 3.11+ (uses `asyncio.TaskGroup`, `ExceptionGroup`; project minimum remains 3.10 — concurrency feature raises at construction on < 3.11) + None new — stdlib only (`asyncio`, `concurrent.futures`, `contextvars`); `trio` optional for trio strategy (001-concurrent-dependency-creation)
 
 ## Recent Changes
-- 001-concurrent-dependency-creation: Added Python ≥3.10 (project minimum); concurrent feature requires ≥3.11 for `asyncio.TaskGroup` + None new — stdlib only (`asyncio`, `concurrent.futures`, `contextvars`); `trio` optional for trio strategy
+- 001-concurrent-dependency-creation: Added concurrent dependency creation with runtime dispatch, codegen, per-factory executor routing, and built-in strategies for asyncio, trio, and thread/process pools

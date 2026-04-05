@@ -13,7 +13,7 @@
 - Bump minimum to 3.11: Rejected — breaking change per constitution, penalizes users on 3.10 who don't need concurrency.
 - Backport `TaskGroup` via `exceptiongroup` + custom impl: Rejected — unnecessary complexity; the `exceptiongroup` package provides `ExceptionGroup` but not `TaskGroup`.
 
-## R-002: Topological Layer Computation from Registry
+## R-002: Topological Layer Computation
 
 **Decision**: Implement a `compute_topological_layers(registry, root_key)` function that builds the sub-DAG for a `get()` call and returns layers (list of lists of `DependencyKey`).
 
@@ -28,90 +28,92 @@ Cross-scope dependencies are treated as already-resolved (they go through `paren
 
 **Alternatives considered**:
 - Pre-compute layers at container creation time for all possible root keys: Rejected — combinatorial explosion; layers depend on which keys are already cached at call time.
-- Store layers in `Registry`: Rejected — layers are call-time state (depend on current cache contents).
+- `graphlib.TopologicalSorter` (stdlib 3.9+): Viable — provides `get_ready()`/`done()` group-based iteration. Evaluate during implementation.
 
 ## R-003: Integration with Compiled Factories
 
-**Decision**: The concurrent resolution path does NOT use compiled factories in the initial implementation. It calls `Factory.source` directly with resolved arguments from the cache. Code generation for concurrency is deferred to Priority 5.
+**Decision**: Two resolution paths coexist:
+1. **Runtime path** (`run()`): Does NOT use compiled factories. Computes topological layers at `get()` time, dispatches each layer via `strategy.run()`, calls `Factory.source` directly with resolved args from cache.
+2. **Codegen path** (`compile()`): Extends the existing factory compiler to emit concurrent code. At container creation time, `strategy.compile(builder, callables)` emits specialized resolution code (e.g., `async with TaskGroup()`) into the compiled factory. The compiled factory handles both sequential and concurrent layers.
 
-**Rationale**: Compiled factories (from `factory_compiler.py`) inline same-scope dependencies into a single call chain. This is structurally incompatible with layer-by-layer dispatch — the compiled function recursively resolves its own dependencies, defeating concurrency. The concurrent path instead:
+**Rationale**: Compiled factories inline same-scope dependencies into a single call chain. This is structurally incompatible with layer-by-layer runtime dispatch. The runtime path bypasses compiled factories and resolves directly from the registry. The codegen path modifies the compiler to emit concurrent constructs, preserving the performance benefits of compiled code.
 
-1. Computes topological layers (R-002).
-2. For each layer, dispatches factories concurrently via the `ConcurrencyStrategy`.
-3. Each factory invocation: reads dependencies from cache (guaranteed present by topological ordering), calls `Factory.source(*args, **kwargs)`, handles generator protocol if applicable, writes result to cache, appends to `_exits` if generator.
-4. After all layers complete, the root value is in the cache — return it.
+Both paths produce identical results. The codegen path eliminates per-`get()` virtual dispatch overhead. Strategies without `compile()` fall back to the runtime path.
 
-The non-concurrent path (no `concurrency=` kwarg) continues to use compiled factories with zero overhead. The concurrent path pays the cost of topological computation + dictionary lookups instead of inlined calls — this is acceptable because the concurrency benefit (parallel I/O) far exceeds the lookup overhead.
+**Key insight from codebase exploration**: `CodeBuilder` already supports `async with`, `await`, function definitions, and dicts via its API. It can emit `TaskGroup`, nursery, and executor patterns as raw code strings via `statement()`. Helper methods can be added for readability.
 
 **Alternatives considered**:
-- Modify the compiler to emit concurrent code (Priority 5 — deferred): Feasible for all built-in strategies (asyncio via `TaskGroup`, trio via nursery + wrapper coroutines, thread pool via `executor.submit`) — the existing `CodeBuilder` supports the necessary constructs. Deferred because the runtime `ConcurrencyStrategy` approach is simpler to implement and validate first, with negligible performance difference (one virtual dispatch per `get()` call). A future optional `compile(builder, callables)` method on the strategy protocol would enable this without breaking the phase 1 interface — strategies without `compile()` fall back to runtime `run()` dispatch.
-- Use compiled factories but break them apart: Rejected — compiled code is a string-eval'd closure with inlined deps; decomposing it would require re-architecting the compiler.
+- Runtime path only (defer codegen): Rejected by user — codegen must ship as part of this feature.
+- Codegen only (no runtime path): Rejected — custom strategies need a simple `run()` interface; not all strategies can or want to emit code.
 
 ## R-004: Generator Factories in Concurrent Context
 
-**Decision**: Generator factories participate in concurrent dispatch normally. The concurrent resolver handles the generator protocol (advance to yield, register cleanup) identically to the compiled factory path, but as explicit Python code rather than generated code.
+**Decision**: Generator factories participate in concurrent dispatch normally. The concurrent resolver handles the generator protocol (advance to yield, register cleanup) identically to the compiled factory path.
 
-**Rationale**: From `factory_compiler.py`, generator handling is:
+**Rationale**: Generator handling is:
 - `GENERATOR`: `gen = source(*args); solved = next(gen); exits.append((gen, None))`
 - `ASYNC_GENERATOR`: `gen = source(*args); solved = await anext(gen); exits.append((None, gen))`
 
-The concurrent resolver reproduces this logic. Within a single layer, multiple generators can be advanced concurrently (their `next()`/`anext()` calls are independent). The `exits.append()` call is safe because:
+Within a single layer, multiple generators can be advanced concurrently (their `next()`/`anext()` calls are independent). `_exits.append()` is safe because:
 - In async: all tasks in a `TaskGroup` run on the same event loop thread — `list.append` is not concurrent.
 - In sync threads: `list.append` is atomic in CPython (GIL). For extra safety, a lock can guard `_exits`.
 
-Cleanup order: generators are appended to `_exits` in layer order (leaves first, root last). On scope exit, they're popped LIFO (root first, leaves last) — this is correct: root resources should be released before their dependencies.
-
-**Alternatives considered**:
-- Exclude generators from concurrent dispatch (resolve sequentially): Rejected — unnecessarily limits concurrency; generators are common in dishka for resource management.
-- Special "synchronization point" handling for generators: Only needed for `ProcessPoolStrategy` (generators can't be pickled). For all other strategies, generators are dispatched normally.
+**Exception**: `ProcessPoolStrategy` — generators cannot be pickled and must run in the calling process (see R-005).
 
 ## R-005: Process Pool + Generator Synchronization Points
 
-**Decision**: `ProcessPoolStrategy` dispatches only non-generator factories (`FactoryType.FACTORY`) to the process pool. Generator factories (`FactoryType.GENERATOR`) run in the calling process. The topological layer computation identifies generator factories and splits layers accordingly.
+**Decision**: `ProcessPoolStrategy` dispatches only non-generator factories to the process pool. Generator factories run in the calling process. Both groups within a layer can execute concurrently (generators in main process, plain factories in pool workers).
 
-**Rationale**: Per the spec: "Generator factories MUST always run in the calling process (sequentially); only plain factories are dispatched to the pool. Generator factories act as synchronization points." The implementation:
+**Rationale**: Per the spec: "Generator factories MUST always run in the calling process (sequentially); only plain factories are dispatched to the pool."
 
+Implementation:
 1. Compute topological layers normally.
 2. Within each layer, partition into: `pool_eligible` (plain factories) and `local_only` (generators).
-3. Dispatch `pool_eligible` to the process pool concurrently.
-4. Run `local_only` sequentially in the calling process.
-5. Both groups within a layer can run concurrently with each other (generators don't depend on pool factories in the same layer, by definition of topological layers).
-
-Actually, since generators in the same layer are independent of each other AND of the pool factories (all their deps are resolved in earlier layers), generators can run concurrently with pool factories — they just run in the main process while pool factories run in worker processes.
-
-**Alternatives considered**:
-- Run generators in worker processes via dill/cloudpickle: Rejected — adds dependency, fragile, and generators need access to the container's `_exits` list.
-- Split layers further to serialize generators: Over-constraining — generators in the same layer are independent and can overlap with pool work.
+3. Dispatch `pool_eligible` to the process pool.
+4. Run `local_only` in the calling process.
+5. Since both groups' dependencies are already resolved (topological ordering), they can overlap.
 
 ## R-006: Cache and Lock Interaction
 
-**Decision**: The concurrent resolution path acquires the existing per-scope lock for the entire `get()` call (same as today). Within the locked section, topological layers are computed and dispatched. The lock prevents concurrent `get()` calls from interfering with each other.
+**Decision**: The concurrent resolution path acquires the existing per-scope lock for the entire `get()` call. Within the locked section, topological layers are computed and dispatched. This is identical to today's locking behavior.
 
-**Rationale**: The existing lock serializes `get()` calls per scope. This is preserved — the concurrent feature parallelizes *within* a single `get()` call (multiple factories in one layer), not *across* multiple `get()` calls. This is correct because:
+**Rationale**: The existing lock serializes `get()` calls per scope. The concurrent feature parallelizes *within* a single `get()` call (multiple factories in one layer), not *across* multiple `get()` calls.
+
 - Cache writes within a `get()` are ordered by topological layers — no races.
-- Two concurrent `get()` calls could both try to write the same cache key — the lock prevents this.
-- The lock scope is the same as today: acquired at `get()` entry, released at `get()` exit.
-
-For async, this means `asyncio.Lock` serializes `get()` calls. Within a single `get()`, the `TaskGroup` dispatches concurrent factories — this works because `asyncio.Lock` is reentrant within the same task (the lock holder's task spawns child tasks in the `TaskGroup`, and those child tasks don't acquire the lock — they just write to the cache directly).
-
-**Alternatives considered**:
-- Fine-grained per-key locks: Rejected — topological ordering makes them unnecessary (no concurrent writes to the same key within a `get()` call), and per-key locks add complexity for cross-`get()` races that the existing scope lock already handles.
-- No locking (rely on topological ordering alone): Rejected — doesn't protect against concurrent `get()` calls from different tasks/threads.
+- Two concurrent `get()` calls are serialized by the scope lock.
+- For async, `asyncio.Lock` serializes `get()` calls. The `TaskGroup` within a single locked `get()` works because child tasks write to disjoint cache keys (topological layer guarantee).
 
 ## R-007: Error Handling and Cancellation
 
-**Decision**: Use structured concurrency primitives (`asyncio.TaskGroup`, trio nursery, `concurrent.futures` `as_completed` + cancel) for error propagation and cancellation. The `ConcurrencyStrategy.run()` method is responsible for collecting results and propagating errors.
+**Decision**: Use structured concurrency primitives for error propagation and cancellation. The `ConcurrencyStrategy.run()` and generated code handle this via `asyncio.TaskGroup`, trio nursery, or `concurrent.futures` cancel semantics.
 
 **Rationale**:
-- `asyncio.TaskGroup`: Automatically cancels remaining tasks when one raises. The exception propagates as an `ExceptionGroup` — the resolver unwraps single-exception groups to preserve the original error type.
+- `asyncio.TaskGroup`: Cancels remaining tasks when one raises. Exception propagates as `ExceptionGroup` — resolver unwraps single-exception groups to preserve original error type.
 - trio nursery: Same semantics — cancels sibling tasks on error.
-- `ThreadPoolExecutor`: `executor.submit()` + `as_completed()` — on first error, cancel remaining futures and propagate.
-- `ProcessPoolExecutor`: Same as thread pool.
+- `ThreadPoolExecutor`/`ProcessPoolExecutor`: `as_completed()` + cancel remaining futures on first error.
 
-For parent cancellation: `asyncio.TaskGroup` and trio nurseries handle this natively — cancelling the parent task cancels all children. For thread pools, `Future.cancel()` prevents pending submissions but can't interrupt running threads — this is a known limitation of `concurrent.futures`.
+On error, factories already completed (including yielded generators) remain in `_exits` — cleaned up on scope exit (correct behavior).
 
-On error, factories that have already completed (including generators that yielded) remain registered in `_exits` — they will be cleaned up on scope exit, which is correct behavior.
+For parent cancellation: `TaskGroup` and trio nurseries handle natively. Thread/process pools: `Future.cancel()` prevents pending submissions but can't interrupt running work — known `concurrent.futures` limitation.
 
-**Alternatives considered**:
-- Custom error aggregation: Rejected — structured concurrency primitives already handle this correctly.
-- Wrapping errors in a dishka-specific exception type: Rejected — spec says "propagate as-is."
+## R-008: Executor Tag Storage and Propagation
+
+**Decision**: Add an optional `executor: str | None` field to `Factory` (in `dependency_source/factory.py`). Surface it to the strategy alongside `DependencyKey` and the factory callable.
+
+**Rationale**: `DependencyKey` is a `NamedTuple` used as dict keys throughout the codebase — adding fields would break hashing/equality semantics. Storing the tag on `Factory` follows the pattern of other factory metadata (`scope`, `cache`, `when_override`).
+
+**Propagation path**: `@provide(executor="tag")` → `Factory.executor` → graph builder includes in layer data → strategy receives `(DependencyKey, Callable, str | None)` tuples or a separate metadata mapping.
+
+**Signature impact**: The `run()` and `compile()` signatures in the spec use `Sequence[tuple[DependencyKey, Callable]]`. Adding the executor tag as a third tuple element is a minor signature change. Alternatively, pass a `dict[DependencyKey, str | None]` mapping alongside the callables list. Final signature determined during implementation.
+
+## R-009: compile() Hook Detection and Fallback
+
+**Decision**: Use `hasattr(strategy, 'compile')` at container creation time. No separate mixin or protocol.
+
+**Rationale**: Simplest approach, matches Python duck-typing conventions. Check happens once at build time, not per `get()`. The compiler either uses `strategy.compile()` to emit concurrent code or emits runtime calls to `strategy.run()`.
+
+**Flow**:
+1. `make_container(concurrency=strategy)` → graph builder receives strategy
+2. Registry compilation: if `hasattr(strategy, 'compile')` → compiler calls `strategy.compile(builder, callables)` for each concurrent layer
+3. Else → compiler emits `await strategy.run(callables)` / `strategy.run(callables)` for each layer
+4. Single-factory layers always skip the strategy (direct call, no overhead)

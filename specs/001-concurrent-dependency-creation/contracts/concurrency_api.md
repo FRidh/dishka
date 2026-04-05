@@ -31,6 +31,23 @@ class AsyncConcurrencyStrategy(Protocol):
         """
         ...
 
+    # Optional — checked via hasattr() at container creation time
+    def compile(
+        self,
+        builder: CodeBuilder,
+        callables: Sequence[tuple[DependencyKey, Callable]],
+    ) -> None:
+        """Emit concurrent dispatch code into the CodeBuilder.
+
+        Symmetric with run(): receives same (key, callable) pairs plus
+        the CodeBuilder. Strategies without this method fall back to
+        runtime run() dispatch.
+
+        All built-in strategies implement compile().
+        Custom strategies may omit it.
+        """
+        ...
+
 
 class SyncConcurrencyStrategy(Protocol):
     """Protocol for sync concurrent factory dispatch."""
@@ -44,31 +61,49 @@ class SyncConcurrencyStrategy(Protocol):
         Same contract as AsyncConcurrencyStrategy but synchronous.
         """
         ...
+
+    # Optional — checked via hasattr() at container creation time
+    def compile(
+        self,
+        builder: CodeBuilder,
+        callables: Sequence[tuple[DependencyKey, Callable]],
+    ) -> None:
+        """Emit concurrent dispatch code into the CodeBuilder.
+
+        Same contract as AsyncConcurrencyStrategy.compile().
+        """
+        ...
 ```
 
 ### Built-in Implementations
 
 ```python
-# Async strategies
+# Async strategies — all ship with run() and compile()
 class AsyncioStrategy:
     """Concurrent dispatch via asyncio.TaskGroup (Python 3.11+)."""
-    pass
+    async def run(self, factories: ...) -> ...: ...
+    def compile(self, builder: ..., callables: ...) -> None: ...
 
 class AsyncioSemaphoreStrategy:
     """Bounded concurrent dispatch via asyncio.TaskGroup + Semaphore."""
     def __init__(self, max_concurrent: int) -> None: ...
+    async def run(self, factories: ...) -> ...: ...
+    def compile(self, builder: ..., callables: ...) -> None: ...
 
 class TrioStrategy:
     """Concurrent dispatch via trio nursery. Requires trio."""
-    pass
+    async def run(self, factories: ...) -> ...: ...
+    def compile(self, builder: ..., callables: ...) -> None: ...
 
-# Sync strategies
+# Sync strategies — all ship with run() and compile()
 class ThreadPoolStrategy:
     """Concurrent dispatch via ThreadPoolExecutor."""
     def __init__(
         self,
         executor: concurrent.futures.ThreadPoolExecutor | None = None,
     ) -> None: ...
+    def run(self, factories: ...) -> ...: ...
+    def compile(self, builder: ..., callables: ...) -> None: ...
 
 class ProcessPoolStrategy:
     """Concurrent dispatch via ProcessPoolExecutor.
@@ -78,7 +113,26 @@ class ProcessPoolStrategy:
         self,
         executor: concurrent.futures.ProcessPoolExecutor | None = None,
     ) -> None: ...
+    def run(self, factories: ...) -> ...: ...
+    def compile(self, builder: ..., callables: ...) -> None: ...
 ```
+
+### Per-Factory Executor Dispatching
+
+```python
+# On @provide decorator — new optional kwarg
+@provide(executor="db_pool")
+async def get_db(self) -> Database: ...
+
+@provide(executor="cpu_pool")
+def compute_heavy(self) -> Result: ...
+
+# No executor tag — uses strategy default
+@provide
+async def get_cache(self) -> Cache: ...
+```
+
+The `executor` tag is a static string stored on the `Factory` metadata. Strategies receive it alongside the `DependencyKey` and factory callable. Built-in strategies route factories based on tags; strategies that don't support per-factory dispatch ignore the tag (no error).
 
 ### Modified Function Signatures
 
@@ -115,6 +169,7 @@ def make_async_container(
 - Omitting `concurrency=` produces identical behavior to current release — zero overhead.
 - All existing tests pass without modification.
 - No existing public symbols are renamed, removed, or have signature changes.
+- `@provide(executor=...)` on factories without concurrency enabled has no effect (tag is stored but ignored).
 
 ### Concurrent Resolution Guarantees
 
@@ -128,43 +183,31 @@ def make_async_container(
 
 ### Strategy-Specific Behavior
 
-| Strategy | Runtime | Generators | Cancellation |
-|---|---|---|---|
-| `AsyncioStrategy` | asyncio (3.11+) | Concurrent (in-process) | `TaskGroup` cancellation |
-| `AsyncioSemaphoreStrategy` | asyncio (3.11+) | Concurrent (bounded) | `TaskGroup` cancellation |
-| `TrioStrategy` | trio | Concurrent (in-process) | Nursery cancellation |
-| `ThreadPoolStrategy` | threads | Concurrent (in-process) | `Future.cancel()` for pending |
-| `ProcessPoolStrategy` | processes | Sequential (in-process) | `Future.cancel()` for pending |
+| Strategy | Runtime | Generators | Cancellation | compile() |
+|---|---|---|---|---|
+| `AsyncioStrategy` | asyncio (3.11+) | Concurrent (in-process) | `TaskGroup` cancellation | Emits `async with TaskGroup()` + `create_task()` |
+| `AsyncioSemaphoreStrategy` | asyncio (3.11+) | Concurrent (bounded) | `TaskGroup` cancellation | Emits `TaskGroup` + `Semaphore` acquire/release |
+| `TrioStrategy` | trio | Concurrent (in-process) | Nursery cancellation | Emits `async with trio.open_nursery()` + wrapper coroutines |
+| `ThreadPoolStrategy` | threads | Concurrent (in-process) | `Future.cancel()` for pending | Emits `executor.submit()` + result collection |
+| `ProcessPoolStrategy` | processes | Sequential (in-process) | `Future.cancel()` for pending | Emits `executor.submit()` (plain) + sequential (generators) |
 
-### Future Extension: Code Generation (Priority 5)
+### Per-Factory Dispatch Behavior
 
-The `ConcurrencyStrategy` protocols are designed to be forward-compatible with an optional `compile()` codegen hook. This is **not part of the initial implementation** but is documented here to constrain the design:
+| Scenario | Behavior |
+|---|---|
+| Factory has `executor="tag"`, strategy supports dispatch | Factory routed to executor matching tag |
+| Factory has no executor tag | Uses strategy's default dispatch |
+| Strategy doesn't support per-factory dispatch | Tags ignored, all factories use default |
+| Both tag and strategy-level `DependencyKey` routing apply | Strategy decides precedence (built-in: explicit tag wins) |
 
-```python
-# Future addition — no breaking changes to existing protocol
-class AsyncConcurrencyStrategy(Protocol):
-    async def run(self, factories: ...) -> ...: ...
+### Code Generation Behavior
 
-    # Optional — checked via hasattr() or separate mixin
-    def compile(
-        self,
-        builder: FactoryBuilder,
-        callables: Sequence[tuple[DependencyKey, str]],  # str = compiled getter name
-    ) -> None:
-        """Emit concurrent dispatch code into the CodeBuilder.
-
-        Strategies without this method fall back to runtime run() dispatch.
-        Built-in and custom strategies may both provide compile().
-        """
-        ...
-```
-
-Codegen is feasible for all built-in strategies:
-- **asyncio**: emit `async with asyncio.TaskGroup()` + `create_task()` calls
-- **trio**: emit `async with trio.open_nursery()` + wrapper coroutines + result dict
-- **thread pool**: emit `executor.submit()` + result collection
-
-The existing `CodeBuilder` supports all necessary constructs (function defs, `async with`, dicts).
+| Scenario | Behavior |
+|---|---|
+| Strategy has `compile()` method | Container uses compiled concurrent code at resolution time |
+| Strategy has only `run()` method | Container falls back to runtime `strategy.run()` dispatch |
+| Single-factory layer | Direct call, no strategy involvement (no overhead) |
+| Detection | `hasattr(strategy, 'compile')` checked once at container creation |
 
 ### Re-exports from `dishka`
 

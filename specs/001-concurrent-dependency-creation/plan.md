@@ -5,19 +5,19 @@
 
 ## Summary
 
-Add opt-in concurrent dependency resolution to dishka. Users pass a `ConcurrencyStrategy` via `concurrency=` kwarg on `make_container()` / `make_async_container()`. The container resolves the dependency graph in topological layers — factories within each layer are independent and dispatched concurrently via the strategy. Built-in strategies: `AsyncioStrategy`, `AsyncioSemaphoreStrategy`, `TrioStrategy`, `ThreadPoolStrategy`, `ProcessPoolStrategy`. Sequential behavior is unchanged when `concurrency=` is omitted.
+Add concurrent dependency creation to dishka. When a `ConcurrencyStrategy` is passed via `concurrency=` to `make_container()`/`make_async_container()`, independent factories within each topological layer of the resolution DAG are dispatched concurrently. The feature delivers: runtime dispatch (`run()`), code generation (`compile()`), per-factory executor routing (`@provide(executor=…)`), and built-in strategies for asyncio, trio, and thread/process pools. Sequential behavior remains the default with zero overhead when concurrency is not configured.
 
 ## Technical Context
 
-**Language/Version**: Python 3.11+ (uses `asyncio.TaskGroup`; project minimum remains 3.10 — concurrency feature raises at construction on < 3.11)
-**Primary Dependencies**: None new — stdlib only (`asyncio`, `concurrent.futures`, `contextvars`); `trio` optional for trio strategy
-**Storage**: N/A
-**Testing**: pytest (`tests/unit/`); concurrency verified via synchronization primitives (events, barriers), not wall-clock time
-**Target Platform**: Cross-platform (Linux, macOS, Windows)
-**Project Type**: Library (PyPI package)
-**Performance Goals**: Zero overhead on sequential path; concurrent path overhead limited to topological computation + dict lookups (negligible vs I/O savings)
-**Constraints**: No anyio dependency; no wall-clock assertions in tests; `asyncio.Lock` / scope lock semantics preserved
-**Scale/Scope**: Affects `container.py`, `async_container.py`, `make_container()`, `make_async_container()`, new `concurrency/` module; ~500-800 lines new code + ~300-500 lines tests
+**Language/Version**: Python 3.11+ (uses `asyncio.TaskGroup`, `ExceptionGroup`)  
+**Primary Dependencies**: None new — stdlib only (`asyncio`, `concurrent.futures`, `contextvars`); `trio` optional for trio strategy  
+**Storage**: N/A  
+**Testing**: pytest, nox (unit + integration sessions)  
+**Target Platform**: Linux/macOS/Windows (same as dishka)  
+**Project Type**: Library  
+**Performance Goals**: Zero overhead on sequential path; concurrent path must show overlap via synchronization primitives (FR-015)  
+**Constraints**: No anyio dependency; no wall-clock assertions in tests; line length 79 chars; strict mypy  
+**Scale/Scope**: Core library feature touching container, registry, code_tools, dependency_source, entities, and provider modules
 
 ## Constitution Check
 
@@ -25,18 +25,15 @@ Add opt-in concurrent dependency resolution to dishka. Users pass a `Concurrency
 
 | Principle | Status | Notes |
 |-----------|--------|-------|
-| I. Performance-First | PASS | Zero overhead on sequential path (no code changes when `concurrency=None`). Concurrent path trades dict lookups for parallel I/O — net positive. |
-| II. Correctness Through Type Hints | PASS | Protocols are fully typed. `concurrency=` kwarg is typed. No `Any` without justification. |
-| III. Test-First (NON-NEGOTIABLE) | PASS | Tests use synchronization primitives (events, barriers), not wall-clock time. All scenarios from spec have acceptance tests. |
-| IV. Minimal, Clean API | PASS | Two new protocols + five implementations + one new kwarg. All strategies are opt-in. No existing public symbols changed. |
-| V. Modular, Reusable Providers | PASS | No changes to Provider API. Concurrency is orthogonal to provider design. |
-| VI. Async Compatibility Without Abstraction Layers | PASS | asyncio and trio supported via separate code paths. No anyio. |
-| Quality: Python version | PASS | Project minimum stays 3.10. Feature requires 3.11+ at runtime (checked at strategy construction). No MAJOR bump needed. |
-| Quality: Linting | PASS | New code follows existing style (79-char lines, ruff, mypy). |
-| Quality: Minimal diff | PASS | Changes scoped to new module + minimal modifications to container files. |
-| Quality: Compatibility | PASS | New kwarg is optional with `None` default. Existing call sites unaffected. |
-
-**Post-Phase-1 re-check**: No violations introduced. The `ConcurrencyStrategy` protocol with `run()` only is forward-compatible with a future optional `compile()` codegen hook (Priority 5) — no breaking changes needed.
+| I. Performance-First | ✅ PASS | Zero overhead when concurrency not configured; concurrent path adds one virtual dispatch per layer per `get()` call. Codegen eliminates even that. |
+| II. Correctness Through Type Hints | ✅ PASS | All new protocols, strategies, and public API fully typed. mypy strict on new code. |
+| III. Test-First (NON-NEGOTIABLE) | ✅ PASS | All 6 user stories have acceptance scenarios with synchronization-based verification. No wall-clock assertions. TDD cycle required. |
+| IV. Minimal, Clean API | ✅ PASS | Single new kwarg `concurrency=` on existing functions. `@provide(executor=)` extends existing decorator. Strategy protocols are opt-in. |
+| V. Modular, Reusable Providers | ✅ PASS | Providers unchanged; executor tag is optional metadata. |
+| VI. Async Compatibility Without Abstraction Layers | ✅ PASS | Separate asyncio and trio code paths; no anyio. |
+| Quality: Python version | ⚠️ NOTE | Requires 3.11+ (for `asyncio.TaskGroup`). This is a minimum version bump from 3.10 → 3.11 for the concurrent feature. Constitution allows this with justification: `TaskGroup` is the correct stdlib primitive for structured concurrency. Must be treated as breaking change (MAJOR version bump). |
+| Quality: Minimal diff | ✅ PASS | Changes scoped to concurrency feature only. |
+| Quality: Linting | ✅ PASS | All new code passes ruff, ast-grep, mypy. |
 
 ## Project Structure
 
@@ -45,103 +42,52 @@ Add opt-in concurrent dependency resolution to dishka. Users pass a `Concurrency
 ```text
 specs/001-concurrent-dependency-creation/
 ├── plan.md              # This file
-├── research.md          # Phase 0 output (complete)
-├── data-model.md        # Phase 1 output (complete)
-├── quickstart.md        # Phase 1 output (complete)
-├── contracts/
-│   └── concurrency_api.md  # Phase 1 output (complete)
-└── tasks.md             # Phase 2 output (/speckit.tasks command)
+├── research.md          # Phase 0 output
+├── data-model.md        # Phase 1 output
+├── quickstart.md        # Phase 1 output
+├── contracts/           # Phase 1 output
+└── tasks.md             # Phase 2 output
 ```
 
 ### Source Code (repository root)
 
 ```text
 src/dishka/
-├── concurrency/                    # NEW — concurrency module
-│   ├── __init__.py                 # Re-exports protocols + strategies
-│   ├── _protocols.py               # AsyncConcurrencyStrategy, SyncConcurrencyStrategy
-│   ├── _resolver.py                # ConcurrentResolver (topological layers + dispatch)
-│   ├── _asyncio.py                 # AsyncioStrategy, AsyncioSemaphoreStrategy
-│   ├── _trio.py                    # TrioStrategy
-│   └── _sync.py                    # ThreadPoolStrategy, ProcessPoolStrategy
-├── async_container.py              # MODIFIED — add concurrency= kwarg, delegate to resolver
-├── container.py                    # MODIFIED — add concurrency= kwarg, delegate to resolver
-└── __init__.py                     # MODIFIED — re-export new public symbols
+├── entities/
+│   ├── key.py                    # DependencyKey (unchanged)
+│   └── concurrency.py            # NEW: ConcurrencyStrategy protocols, ExecutorTag, built-in strategy classes
+├── dependency_source/
+│   └── factory.py                # MODIFIED: add executor tag field to Factory
+├── provider/
+│   └── make_factory.py           # MODIFIED: add executor= kwarg to @provide
+├── code_tools/
+│   ├── code_builder.py           # MODIFIED: helper methods for concurrent code emission
+│   └── factory_compiler.py       # MODIFIED: topological layer compilation, compile() hook integration
+├── graph_builder/
+│   └── builder.py                # MODIFIED: compute topological layers at graph build time
+├── registry.py                   # MODIFIED: store topological layers, pass to compiler
+├── async_container.py            # MODIFIED: concurrent resolution path using strategy.run()
+├── container.py                  # MODIFIED: concurrent resolution path for sync strategies
+└── concurrency/                  # NEW: directory for strategy implementations
+    ├── __init__.py
+    ├── _asyncio.py               # AsyncioStrategy, AsyncioSemaphoreStrategy (run + compile)
+    ├── _trio.py                  # TrioStrategy (run + compile)
+    └── _sync.py                  # ThreadPoolStrategy, ProcessPoolStrategy (run + compile)
 
 tests/unit/
-└── test_concurrency/               # NEW — concurrency tests
-    ├── test_asyncio_strategy.py    # Priority 1: basic async concurrency
-    ├── test_semaphore.py           # Priority 2: bounded concurrency
-    ├── test_trio_strategy.py       # Priority 3: trio support
-    ├── test_thread_pool.py         # Priority 4: sync thread pool
-    ├── test_process_pool.py        # Priority 4: sync process pool
-    ├── test_topological_layers.py  # Shared: layer computation
-    ├── test_diamond.py             # Shared: deduplication
-    ├── test_error_propagation.py   # Shared: error handling
-    └── test_cancellation.py        # Shared: cancellation safety
+└── container/
+    └── test_concurrency/         # NEW: test directory
+        ├── test_asyncio.py       # Async concurrent resolution, error propagation, cancellation
+        ├── test_semaphore.py     # Semaphore limiting
+        ├── test_trio.py          # Trio concurrent resolution
+        ├── test_sync.py          # Thread pool, process pool
+        ├── test_dispatch.py      # Per-factory executor dispatching
+        ├── test_codegen.py       # Codegen parity tests for all strategies
+        └── test_diamond.py       # Diamond deduplication across all strategies
 ```
 
-**Structure Decision**: New `concurrency/` subpackage under `src/dishka/` keeps concurrency code isolated from existing container logic. Container files get minimal modifications (check for `_concurrency` slot, delegate to resolver if set).
-
-## Implementation Priorities
-
-Implementation follows the priority order defined in the spec. Each priority is independently shippable and builds on the previous.
-
-### Priority 1: Async Concurrency (asyncio)
-
-**Scope**: Core infrastructure + asyncio strategy
-
-1. **Protocols** (`_protocols.py`): Define `AsyncConcurrencyStrategy` with `run()` method. Include `DependencyKey` in signature from day one (FR-013).
-2. **Topological resolver** (`_resolver.py`): `ConcurrentResolver` with `_compute_layers()` (BFS + Kahn's algorithm) and `async resolve()`. Handles cache reads, factory invocation, generator protocol, `_exits` registration.
-3. **AsyncioStrategy** (`_asyncio.py`): `asyncio.TaskGroup`-based implementation. Unwraps single-exception `ExceptionGroup` for clean error propagation.
-4. **AsyncContainer integration** (`async_container.py`): Add `_concurrency` slot, `concurrency=` kwarg on `make_async_container()`, child propagation, branch in `_get_unlocked()`.
-5. **Tests**: Concurrent resolution, diamond dedup, error propagation, cancellation, generator cleanup, no-op when single factory.
-
-### Priority 2: Semaphore Limiting
-
-**Scope**: Bounded asyncio concurrency
-
-1. **AsyncioSemaphoreStrategy** (`_asyncio.py`): Wraps each task with `asyncio.Semaphore(max_concurrent)`.
-2. **Tests**: Verify at most N concurrent factories with N+2 independent deps.
-
-### Priority 3: trio Support
-
-**Scope**: trio nursery strategy
-
-1. **TrioStrategy** (`_trio.py`): `trio.open_nursery()` + wrapper coroutines + result dict.
-2. **Tests**: Mirror asyncio tests under `trio.run()`.
-
-### Priority 4: Sync Concurrency
-
-**Scope**: Thread pool and process pool strategies
-
-1. **SyncConcurrencyStrategy protocol** (`_protocols.py`).
-2. **ThreadPoolStrategy** (`_sync.py`): `concurrent.futures.ThreadPoolExecutor` submission.
-3. **ProcessPoolStrategy** (`_sync.py`): Generator factories partitioned to run locally.
-4. **Container integration** (`container.py`): Add `_concurrency` slot, `concurrency=` kwarg on `make_container()`, branch in `_get_unlocked()`.
-5. **Sync resolver path** in `_resolver.py`.
-6. **Tests**: Thread pool concurrency, process pool with generators, error propagation.
-
-### Priority 5: Code Generation (Deferred — Out of Scope)
-
-**Scope**: Optional `compile()` codegen hook on strategy protocols
-
-This priority is **not implemented** in the current feature branch. It is documented here to ensure the Priority 1-4 design does not preclude it.
-
-**What would change**:
-- Add optional `compile(builder: FactoryBuilder, callables: FactoryBatch) -> None` method to both protocols (checked via `hasattr` or separate mixin — no breaking change to `run()`-only implementations).
-- `factory_compiler.py`: When compiling a factory whose deps include concurrent-eligible siblings, check if the strategy has `compile()`. If yes, delegate code emission to the strategy. If no, emit a runtime `strategy.run(...)` call.
-- Built-in codegen templates:
-  - **asyncio**: `async with asyncio.TaskGroup() as tg: tg.create_task(get_X(...))` for each sibling
-  - **trio**: `async with trio.open_nursery() as nursery:` + wrapper coroutine defs + result dict
-  - **thread pool**: `executor.submit(get_X, ...)` + result collection
-- Custom strategies can implement `compile()` to emit their own code.
-- The existing `CodeBuilder` already supports all necessary constructs (function defs, `async with`, dicts, assignments).
-
-**Why deferred**: The runtime `ConcurrencyStrategy.run()` approach delivers identical functionality with negligible overhead (one virtual dispatch per `get()` call). Codegen is a pure optimization — worth pursuing after the runtime approach is stable and validated.
-
-**Interface guarantee**: No changes to the Priority 1-4 public interface are needed to support Priority 5 later.
+**Structure Decision**: Follows existing dishka layout. New `concurrency/` package under `src/dishka/` for strategy implementations. New `entities/concurrency.py` for protocols and types (consistent with other entity definitions in `entities/`). Tests in `tests/unit/container/test_concurrency/`.
 
 ## Complexity Tracking
 
-No constitution violations to justify. The design adds one new subpackage and minimal modifications to two existing files, staying well within scope constraints.
+No constitution violations requiring justification. The Python 3.11+ requirement is noted and accepted per constitution rules (concrete reason: `asyncio.TaskGroup`).
