@@ -721,14 +721,16 @@ def provide(
         return _provide(
             provides=provides, scope=scope, source=source, cache=cache,
             is_in_class=True, recursive=recursive, override=override,
-            when=when, executor=executor,
+            when=when,
+            executor=executor,
         )
 
     def scoped(func: Callable[..., Any]) -> CompositeDependencySource:
         return _provide(
             provides=provides, scope=scope, source=func, cache=cache,
             is_in_class=True, recursive=recursive, override=override,
-            when=when, executor=executor,
+            when=when,
+            executor=executor,
         )
 
     return scoped

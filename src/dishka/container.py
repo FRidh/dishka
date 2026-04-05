@@ -55,18 +55,16 @@ class Container:
     )
 
     def __init__(
-        self,
-        registry: Registry,
-        parent_container: "Container | None",
-        context: dict[Any, Any] | None,
-        lock_factory: Callable[
-            [],
-            AbstractContextManager[Any],
-        ]
-        | None,
-        parent_closer: ExitCallable | None,
-        parent_getter: Callable[[CompilationKey], Any] | None,
-        concurrency: Any | None = None,
+            self,
+            registry: Registry,
+            parent_container: "Container | None",
+            context: dict[Any, Any] | None,
+            lock_factory: Callable[
+                [], AbstractContextManager[Any],
+            ] | None,
+            parent_closer: ExitCallable | None,
+            parent_getter: Callable[[CompilationKey], Any] | None,
+            concurrency: Any | None = None,
     ) -> None:
         self.registry = registry
         self._context = context
@@ -97,14 +95,12 @@ class Container:
         return ContextProxy(cache=self._cache, context=self._context)
 
     def __call__(
-        self,
-        context: dict[Any, Any] | None = None,
-        lock_factory: Callable[
-            [],
-            AbstractContextManager[Any],
-        ]
-        | None = None,
-        scope: BaseScope | None = None,
+            self,
+            context: dict[Any, Any] | None = None,
+            lock_factory: Callable[
+                [], AbstractContextManager[Any],
+            ] | None = None,
+            scope: BaseScope | None = None,
     ) -> "Container":
         """
         Prepare container for entering the inner scope.
@@ -157,35 +153,35 @@ class Container:
 
     @overload
     def get(
-        self,
-        dependency_type: type[T],
-        component: Component | None = DEFAULT_COMPONENT,
-    ) -> T: ...
+            self,
+            dependency_type: type[T],
+            component: Component | None = DEFAULT_COMPONENT,
+    ) -> T:
+        ...
 
     @overload
     def get(
-        self,
-        dependency_type: Any,
-        component: Component | None = DEFAULT_COMPONENT,
-    ) -> Any: ...
+            self,
+            dependency_type: Any,
+            component: Component | None = DEFAULT_COMPONENT,
+    ) -> Any:
+        ...
 
     def get(
-        self,
-        dependency_type: Any,
-        component: Component | None = DEFAULT_COMPONENT,
+            self,
+            dependency_type: Any,
+            component: Component | None = DEFAULT_COMPONENT,
     ) -> Any:
         lock = self.lock
         try:
             if lock is None:
                 return self._get_unlocked(
-                    dependency_type
-                    if component == DEFAULT_COMPONENT
+                    dependency_type if component == DEFAULT_COMPONENT
                     else DependencyKey(dependency_type, component),
                 )
             with lock:
                 return self._get_unlocked(
-                    dependency_type
-                    if component == DEFAULT_COMPONENT
+                    dependency_type if component == DEFAULT_COMPONENT
                     else DependencyKey(dependency_type, component),
                 )
         except (NoFactoryError, NoActiveFactoryError) as e:
@@ -347,10 +343,10 @@ class Container:
         return self
 
     def __exit__(
-        self,
-        exc_type: type[BaseException] | None = None,
-        exception: BaseException | None = None,
-        exc_tb: TracebackType | None = None,
+            self,
+            exc_type: type[BaseException] | None = None,
+            exception: BaseException | None = None,
+            exc_tb: TracebackType | None = None,
     ) -> None:
         errors = None
         while self._exits:
@@ -384,16 +380,14 @@ class Container:
             if not self.parent_container:
                 return False
             return self.parent_container._has(marker)  # noqa: SLF001
-        return bool(
-            compiled(
-                self._get_unlocked,
-                self._exits,
-                self._cache,
-                self._context,
-                self,
-                self._has,
-            ),
-        )
+        return bool(compiled(
+            self._get_unlocked,
+            self._exits,
+            self._cache,
+            self._context,
+            self,
+            self._has,
+        ))
 
     def _has_context(self, marker: Any) -> bool:
         return self._context is not None and marker in self._context
@@ -404,7 +398,6 @@ class HasProvider(Provider):
     This provider is used only for direct access on Has/HasContext.
     Basic implementation is inlined in code builder.
     """
-
     @activate(Has)
     def has(
         self,
@@ -412,8 +405,7 @@ class HasProvider(Provider):
         container: Container,
     ) -> bool:
         return container._has(  # noqa: SLF001
-            marker.type_hint.value
-            if marker.component == DEFAULT_COMPONENT
+            marker.type_hint.value if marker.component == DEFAULT_COMPONENT
             else DependencyKey(marker.type_hint.value, marker.component),
         )
 
@@ -423,18 +415,18 @@ class HasProvider(Provider):
         marker: HasContext,
         container: Container,
     ) -> bool:
-        return container._has_context(marker.value)  # noqa: SLF001
+        return container._has_context(marker.value)   # noqa: SLF001
 
 
 def make_container(
-    *providers: BaseProvider,
-    scopes: type[BaseScope] = Scope,
-    context: dict[Any, Any] | None = None,
-    lock_factory: Callable[[], AbstractContextManager[Any]] | None = Lock,
-    skip_validation: bool = False,
-    start_scope: BaseScope | None = None,
-    validation_settings: ValidationSettings = DEFAULT_VALIDATION,
-    concurrency: Any | None = None,
+        *providers: BaseProvider,
+        scopes: type[BaseScope] = Scope,
+        context: dict[Any, Any] | None = None,
+        lock_factory: Callable[[], AbstractContextManager[Any]] | None = Lock,
+        skip_validation: bool = False,
+        start_scope: BaseScope | None = None,
+        validation_settings: ValidationSettings = DEFAULT_VALIDATION,
+        concurrency: Any | None = None,
 ) -> Container:
     context_provider = make_root_context_provider(providers, context, scopes)
     has_provider = HasProvider()
