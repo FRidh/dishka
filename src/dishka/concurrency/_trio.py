@@ -12,6 +12,7 @@ class TrioStrategy:
             tuple[
                 DependencyKey,
                 Callable[[], Awaitable[object]],
+                str | None,
             ]
         ],
     ) -> Sequence[object]:
@@ -27,7 +28,9 @@ class TrioStrategy:
 
         try:
             async with trio.open_nursery() as nursery:
-                for i, (_key, factory) in enumerate(factories):
+                for i, (_key, factory, _ex) in enumerate(
+                    factories,
+                ):
                     nursery.start_soon(_wrapper, i, factory)
         except BaseExceptionGroup as exc:
             if len(exc.exceptions) == 1:

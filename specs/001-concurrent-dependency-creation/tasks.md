@@ -139,17 +139,17 @@
 
 ### Tests for User Story 5
 
-- [ ] T033 [P] [US5] Test tag-based dispatch: two factories with different executor tags routed to matching executors in tests/unit/container/test_concurrent_creation/test_dispatch.py — covers acceptance scenario 1
-- [ ] T034 [P] [US5] Test default dispatch: factory with no executor tag uses strategy default in tests/unit/container/test_concurrent_creation/test_dispatch.py — covers acceptance scenario 2
-- [ ] T035 [P] [US5] Test non-dispatch strategy: executor tags ignored, no error in tests/unit/container/test_concurrent_creation/test_dispatch.py — covers acceptance scenario 3
-- [ ] T036 [P] [US5] Test precedence: explicit tag wins over strategy-level DependencyKey routing in tests/unit/container/test_concurrent_creation/test_dispatch.py — covers acceptance scenario 4
+- [x] T033 [P] [US5] Test tag-based dispatch: two factories with different executor tags routed to matching executors in tests/unit/container/test_concurrent_creation/test_dispatch.py — covers acceptance scenario 1
+- [x] T034 [P] [US5] Test default dispatch: factory with no executor tag uses strategy default in tests/unit/container/test_concurrent_creation/test_dispatch.py — covers acceptance scenario 2
+- [x] T035 [P] [US5] Test non-dispatch strategy: executor tags ignored, no error in tests/unit/container/test_concurrent_creation/test_dispatch.py — covers acceptance scenario 3
+- [x] T036 [P] [US5] Test precedence: explicit tag wins over strategy-level DependencyKey routing in tests/unit/container/test_concurrent_creation/test_dispatch.py — covers acceptance scenario 4
 
 ### Implementation for User Story 5
 
-- [ ] T037 [US5] Extend strategy `run()` signatures to pass executor tag (or Factory metadata) alongside DependencyKey and callable in the concurrent resolution path in src/dishka/async_container.py and src/dishka/container.py
-- [ ] T038 [US5] Implement per-factory dispatch logic in `AsyncioStrategy.run()` and `AsyncioSemaphoreStrategy.run()` in src/dishka/concurrency/_asyncio.py — route based on Factory.executor tag
-- [ ] T039 [P] [US5] Implement per-factory dispatch logic in `TrioStrategy.run()` in src/dishka/concurrency/_trio.py
-- [ ] T040 [P] [US5] Implement per-factory dispatch logic in `ThreadPoolStrategy.run()` and `ProcessPoolStrategy.run()` in src/dishka/concurrency/_sync.py
+- [x] T037 [US5] Extend strategy `run()` signatures to pass executor tag (or Factory metadata) alongside DependencyKey and callable in the concurrent resolution path in src/dishka/async_container.py and src/dishka/container.py
+- [x] T038 [US5] Implement per-factory dispatch logic in `AsyncioStrategy.run()` and `AsyncioSemaphoreStrategy.run()` in src/dishka/concurrency/_asyncio.py — route based on Factory.executor tag
+- [x] T039 [P] [US5] Implement per-factory dispatch logic in `TrioStrategy.run()` in src/dishka/concurrency/_trio.py
+- [x] T040 [P] [US5] Implement per-factory dispatch logic in `ThreadPoolStrategy.run()` and `ProcessPoolStrategy.run()` in src/dishka/concurrency/_sync.py
 
 **Checkpoint**: Per-factory executor dispatching works across all built-in strategies. Tag-based and default routing verified.
 

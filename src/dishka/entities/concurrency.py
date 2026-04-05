@@ -11,7 +11,11 @@ class AsyncConcurrencyStrategy(Protocol):
     async def run(
         self,
         factories: Sequence[
-            tuple[DependencyKey, Callable[[], Awaitable[object]]]
+            tuple[
+                DependencyKey,
+                Callable[[], Awaitable[object]],
+                str | None,
+            ]
         ],
     ) -> Sequence[object]: ...
 
@@ -21,6 +25,10 @@ class SyncConcurrencyStrategy(Protocol):
     def run(
         self,
         factories: Sequence[
-            tuple[DependencyKey, Callable[[], object]]
+            tuple[
+                DependencyKey,
+                Callable[[], object],
+                str | None,
+            ]
         ],
     ) -> Sequence[object]: ...

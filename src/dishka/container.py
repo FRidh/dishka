@@ -278,7 +278,7 @@ class Container:
                     )
             else:
                 callables = []
-                for dk, _factory in layer:
+                for dk, fact in layer:
                     comp_key = dk.as_compilation_key()
                     compiled = (
                         self.registry.get_compiled(comp_key)
@@ -298,7 +298,9 @@ class Container:
                             self._has,
                         )
 
-                    callables.append((dk, _invoke))
+                    callables.append(
+                        (dk, _invoke, fact.executor),
+                    )
 
                 if callables:
                     strategy.run(callables)

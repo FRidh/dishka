@@ -21,7 +21,11 @@ class ThreadPoolStrategy:
     def run(
         self,
         factories: Sequence[
-            tuple[DependencyKey, Callable[[], object]]
+            tuple[
+                DependencyKey,
+                Callable[[], object],
+                str | None,
+            ]
         ],
     ) -> Sequence[object]:
         executor = self._executor
@@ -29,7 +33,9 @@ class ThreadPoolStrategy:
             executor = ThreadPoolExecutor()
         try:
             futures: list[tuple[int, Future[object]]] = []
-            for i, (_key, factory) in enumerate(factories):
+            for i, (_key, factory, _ex) in enumerate(
+                factories,
+            ):
                 futures.append((i, executor.submit(factory)))
 
             results: list[object] = [None] * len(factories)
@@ -66,7 +72,11 @@ class ProcessPoolStrategy:
     def run(
         self,
         factories: Sequence[
-            tuple[DependencyKey, Callable[[], object]]
+            tuple[
+                DependencyKey,
+                Callable[[], object],
+                str | None,
+            ]
         ],
     ) -> Sequence[object]:
         # Process pool cannot pickle closures/generators,
@@ -84,7 +94,9 @@ class ProcessPoolStrategy:
             thread_executor = ThreadPoolExecutor()
             try:
                 futures: list[tuple[int, Future[object]]] = []
-                for i, (_key, factory) in enumerate(factories):
+                for i, (_key, factory, _ex) in enumerate(
+                    factories,
+                ):
                     futures.append(
                         (i, thread_executor.submit(factory)),
                     )

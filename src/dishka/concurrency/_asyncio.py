@@ -13,6 +13,7 @@ class AsyncioStrategy:
             tuple[
                 DependencyKey,
                 Callable[[], Awaitable[object]],
+                str | None,
             ]
         ],
     ) -> Sequence[object]:
@@ -21,7 +22,9 @@ class AsyncioStrategy:
         try:
             async with asyncio.TaskGroup() as tg:
                 tasks = []
-                for i, (_key, factory) in enumerate(factories):
+                for i, (_key, factory, _ex) in enumerate(
+                    factories,
+                ):
                     tasks.append(
                         (i, tg.create_task(factory())),
                     )
@@ -50,6 +53,7 @@ class AsyncioSemaphoreStrategy:
             tuple[
                 DependencyKey,
                 Callable[[], Awaitable[object]],
+                str | None,
             ]
         ],
     ) -> Sequence[object]:
@@ -64,7 +68,9 @@ class AsyncioSemaphoreStrategy:
                 results[idx] = await factory()
 
         async with asyncio.TaskGroup() as tg:
-            for i, (_key, factory) in enumerate(factories):
+            for i, (_key, factory, _ex) in enumerate(
+                factories,
+            ):
                 tg.create_task(_wrapped(i, factory))
 
         return results
