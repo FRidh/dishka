@@ -203,3 +203,37 @@ class TestTagPrecedence:
         }
         assert tags[A] == "explicit"
         assert tags[B] is None
+
+
+class TestUnrecognizedExecutorTag:
+    """T057: Unrecognized executor tag — built-in strategy works."""
+
+    @pytest.mark.asyncio
+    async def test_unknown_tag_no_error(self) -> None:
+        """Built-in strategies accept unknown tags without error."""
+        from dishka.concurrency._asyncio import AsyncioStrategy
+
+        class MyProvider(Provider):
+            scope = Scope.APP
+
+            @provide(executor="nonexistent_pool")
+            async def a(self) -> A:
+                return A(1)
+
+            @provide(executor="also_unknown")
+            async def b(self) -> B:
+                return B(2)
+
+            @provide
+            async def root(self, a: A, b: B) -> list[Any]:
+                return [a, b]
+
+        strategy = AsyncioStrategy()
+        container = make_async_container(
+            MyProvider(),
+            concurrency=strategy,
+        )
+        async with container:
+            result = await container.get(list[Any])
+
+        assert result == [1, 2]

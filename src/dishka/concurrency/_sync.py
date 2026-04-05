@@ -45,7 +45,7 @@ class ThreadPoolStrategy:
             for i, fut in futures:
                 try:
                     results[i] = fut.result()
-                except BaseException as exc:
+                except BaseException as exc:  # noqa: BLE001
                     error = exc
                     # Cancel remaining futures
                     for _, remaining in futures:
@@ -60,12 +60,11 @@ class ThreadPoolStrategy:
 
     def compile(
         self,
-        compiled_factories: Sequence[
-            tuple[DependencyKey, CompiledFactory]
-        ],
+        compiled_factories: Sequence[tuple[DependencyKey, CompiledFactory]],
     ) -> CompiledFactory:
         return _compile_threadpool_layer(
-            compiled_factories, self._executor,
+            compiled_factories,
+            self._executor,
         )
 
 
@@ -117,7 +116,7 @@ class ProcessPoolStrategy:
                 for i, fut in futures:
                     try:
                         results[i] = fut.result()
-                    except BaseException as exc:
+                    except BaseException as exc:  # noqa: BLE001
                         error = exc
                         for _, remaining in futures:
                             remaining.cancel()
@@ -133,26 +132,24 @@ class ProcessPoolStrategy:
 
     def compile(
         self,
-        compiled_factories: Sequence[
-            tuple[DependencyKey, CompiledFactory]
-        ],
+        compiled_factories: Sequence[tuple[DependencyKey, CompiledFactory]],
     ) -> CompiledFactory:
         return _compile_threadpool_layer(
-            compiled_factories, None,
+            compiled_factories,
+            None,
         )
 
 
 def _compile_threadpool_layer(
-    compiled_factories: Sequence[
-        tuple[DependencyKey, CompiledFactory]
-    ],
+    compiled_factories: Sequence[tuple[DependencyKey, CompiledFactory]],
     executor: ThreadPoolExecutor | None,
 ) -> CompiledFactory:
     """Emit a compiled function that dispatches factories
     concurrently via ThreadPoolExecutor."""
     builder = CodeBuilder(is_async=False)
     tpe_cls = builder.global_(
-        ThreadPoolExecutor, "ThreadPoolExecutor",
+        ThreadPoolExecutor,
+        "ThreadPoolExecutor",
     )
 
     if executor is not None:
@@ -166,15 +163,20 @@ def _compile_threadpool_layer(
         factory_names.append(name)
 
     args = [
-        "getter", "exits", "cache",
-        "context", "container", "has",
+        "getter",
+        "exits",
+        "cache",
+        "context",
+        "container",
+        "has",
     ]
     with builder.def_("_concurrent_layer", args):
         if ex_name is not None:
             builder.assign_local("ex", ex_name)
         else:
             builder.assign_local(
-                "ex", builder.call(tpe_cls),
+                "ex",
+                builder.call(tpe_cls),
             )
         with builder.try_():
             builder.assign_local("futures", "[]")
@@ -186,8 +188,7 @@ def _compile_threadpool_layer(
                         f"context, container, has)",
                     )
                 builder.statement(
-                    f"futures.append("
-                    f"ex.submit({def_name}))",
+                    f"futures.append(ex.submit({def_name}))",
                 )
             builder.assign_local("error", "None")
             with builder.for_("fut", "futures"):
@@ -195,10 +196,11 @@ def _compile_threadpool_layer(
                     builder.statement(
                         "fut.result()",
                     )
-                with builder.except_(BaseException, as_="exc"):
+                with builder.except_(BaseException, as_="exc"):  # type: ignore[arg-type]
                     builder.statement("error = exc")
                     with builder.for_(
-                        "remaining", "futures",
+                        "remaining",
+                        "futures",
                     ):
                         builder.statement(
                             "remaining.cancel()",
@@ -214,5 +216,5 @@ def _compile_threadpool_layer(
                     "ex.shutdown(wait=False)",
                 )
 
-    result = builder.compile("<concurrent_threadpool_layer>")
-    return result["_concurrent_layer"]
+    ns = builder.compile("<concurrent_threadpool_layer>")
+    return ns["_concurrent_layer"]  # type: ignore[no-any-return]

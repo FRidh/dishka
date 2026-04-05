@@ -187,15 +187,15 @@
 
 **Purpose**: Final validation, edge cases, and cleanup
 
-- [ ] T053 [P] Test edge case: all dependencies cached — falls through without task overhead in tests/unit/container/test_concurrent_creation/test_asyncio.py
-- [ ] T054 [P] Test edge case: single independent factory — no unnecessary strategy involvement in tests/unit/container/test_concurrent_creation/test_asyncio.py
-- [ ] T055 [P] Test edge case: generator factory raises during setup (before yield) — cleanup must not finalize in tests/unit/container/test_concurrent_creation/test_asyncio.py
-- [ ] T056 [P] Test edge case: strategy.run() itself raises (strategy bug) — propagates as-is in tests/unit/container/test_concurrent_creation/test_asyncio.py
-- [ ] T057 [P] Test edge case: unrecognized executor tag — built-in strategy raises clear error in tests/unit/container/test_concurrent_creation/test_dispatch.py
-- [ ] T058 Run `ruff check src/dishka/concurrency/ src/dishka/entities/concurrency.py` and `ruff format` — fix any lint issues
-- [ ] T059 Run `mypy src/dishka/concurrency/ src/dishka/entities/concurrency.py` — fix any type errors
-- [ ] T060 Run full test suite: `pytest tests/unit` — verify no regressions (SC-003)
-- [ ] T061 Run quickstart.md validation: create a test script from quickstart.md examples, verify they work end-to-end
+- [x] T053 [P] Test edge case: all dependencies cached — falls through without task overhead in tests/unit/container/test_concurrent_creation/test_edge_cases.py
+- [x] T054 [P] Test edge case: single independent factory — no unnecessary strategy involvement in tests/unit/container/test_concurrent_creation/test_edge_cases.py
+- [x] T055 [P] Test edge case: generator factory raises during setup (before yield) — cleanup must not finalize in tests/unit/container/test_concurrent_creation/test_edge_cases.py
+- [x] T056 [P] Test edge case: strategy.run() itself raises (strategy bug) — propagates as-is in tests/unit/container/test_concurrent_creation/test_edge_cases.py
+- [x] T057 [P] Test edge case: unrecognized executor tag — built-in strategy accepts without error in tests/unit/container/test_concurrent_creation/test_dispatch.py
+- [x] T058 Run `ruff check src/dishka/concurrency/ src/dishka/entities/concurrency.py` and `ruff format` — fix any lint issues
+- [x] T059 Run `mypy src/dishka/concurrency/ src/dishka/entities/concurrency.py` — fix any type errors
+- [x] T060 Run full test suite: `pytest tests/unit` — verify no regressions (SC-003)
+- [x] T061 Run quickstart.md validation: create a test script from quickstart.md examples, verify they work end-to-end
 
 ---
 

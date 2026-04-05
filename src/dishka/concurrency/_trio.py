@@ -18,7 +18,7 @@ class TrioStrategy:
             ]
         ],
     ) -> Sequence[object]:
-        import trio
+        import trio  # noqa: PLC0415
 
         results: dict[int, object] = {}
 
@@ -43,63 +43,74 @@ class TrioStrategy:
 
     def compile(
         self,
-        compiled_factories: Sequence[
-            tuple[DependencyKey, CompiledFactory]
-        ],
+        compiled_factories: Sequence[tuple[DependencyKey, CompiledFactory]],
     ) -> CompiledFactory:
-        import trio
+        import trio  # noqa: PLC0415
 
         builder = CodeBuilder(is_async=True)
         open_nursery = builder.global_(
-            trio.open_nursery, "open_nursery",
+            trio.open_nursery,
+            "open_nursery",
         )
-        beg_name = builder.global_(
-            BaseExceptionGroup, "BaseExceptionGroup",
+        builder.global_(
+            BaseExceptionGroup,
+            "BaseExceptionGroup",
         )
 
         factory_names: list[str] = []
-        for i, (_dk, compiled) in enumerate(
+        for idx, (_dk, compiled) in enumerate(
             compiled_factories,
         ):
-            name = builder.global_(compiled, f"factory_{i}")
+            name = builder.global_(
+                compiled,
+                f"factory_{idx}",
+            )
             factory_names.append(name)
 
         args = [
-            "getter", "exits", "cache",
-            "context", "container", "has",
+            "getter",
+            "exits",
+            "cache",
+            "context",
+            "container",
+            "has",
         ]
         with builder.def_("_concurrent_layer", args):
-            with builder.try_():
-                with builder.with_(
+            with (
+                builder.try_(),
+                builder.with_(
                     builder.call(open_nursery),
                     "nursery",
                     is_async=True,
+                ),
+            ):
+                for idx, name in enumerate(
+                    factory_names,
                 ):
-                    for i, name in enumerate(factory_names):
-                        wrapper = f"_wrap_{i}"
-                        with builder.def_(wrapper, []):
-                            builder.statement(
-                                f"await {name}("
-                                f"getter, exits, cache, "
-                                f"context, container, "
-                                f"has)",
-                            )
+                    wrapper = f"_wrap_{idx}"
+                    with builder.def_(wrapper, []):
                         builder.statement(
-                            f"nursery.start_soon({wrapper})",
+                            f"await {name}("
+                            f"getter, exits, cache,"
+                            f" context, container,"
+                            f" has)",
                         )
+                    builder.statement(
+                        f"nursery.start_soon({wrapper})",
+                    )
             with builder.except_(
-                BaseExceptionGroup, as_="exc",
+                BaseExceptionGroup,  # type: ignore[arg-type]
+                as_="exc",
             ):
                 with builder.if_(
                     "len(exc.exceptions) == 1",
                 ):
                     builder.statement(
-                        "raise exc.exceptions[0]"
-                        " from exc.__cause__",
+                        "raise exc.exceptions[0] from exc.__cause__",
                     )
                 builder.raise_()
 
-        result = builder.compile(
+        ns = builder.compile(
             "<concurrent_trio_layer>",
         )
-        return result["_concurrent_layer"]
+        return ns["_concurrent_layer"]  # type: ignore[no-any-return]

@@ -54,16 +54,18 @@ class AsyncContainer:
     )
 
     def __init__(
-            self,
-            registry: Registry,
-            parent_container: "AsyncContainer | None",
-            context: dict[Any, Any] | None,
-            lock_factory: Callable[
-                [], AbstractAsyncContextManager[Any],
-            ] | None,
-            parent_closer: ExitCallable | None,
-            parent_getter:  Callable[[CompilationKey], Any] | None,
-            concurrency: Any | None = None,
+        self,
+        registry: Registry,
+        parent_container: "AsyncContainer | None",
+        context: dict[Any, Any] | None,
+        lock_factory: Callable[
+            [],
+            AbstractAsyncContextManager[Any],
+        ]
+        | None,
+        parent_closer: ExitCallable | None,
+        parent_getter: Callable[[CompilationKey], Any] | None,
+        concurrency: Any | None = None,
     ) -> None:
         self.registry = registry
         self._context = context
@@ -94,12 +96,14 @@ class AsyncContainer:
         return ContextProxy(cache=self._cache, context=self._context)
 
     def __call__(
-            self,
-            context: dict[Any, Any] | None = None,
-            lock_factory: Callable[
-                [], AbstractAsyncContextManager[Any],
-            ] | None = None,
-            scope: BaseScope | None = None,
+        self,
+        context: dict[Any, Any] | None = None,
+        lock_factory: Callable[
+            [],
+            AbstractAsyncContextManager[Any],
+        ]
+        | None = None,
+        scope: BaseScope | None = None,
     ) -> "AsyncContainer":
         """
         Prepare container for entering the inner scope.
@@ -152,35 +156,35 @@ class AsyncContainer:
 
     @overload
     async def get(
-            self,
-            dependency_type: type[T],
-            component: Component | None = DEFAULT_COMPONENT,
-    ) -> T:
-        ...
+        self,
+        dependency_type: type[T],
+        component: Component | None = DEFAULT_COMPONENT,
+    ) -> T: ...
 
     @overload
     async def get(
-            self,
-            dependency_type: Any,
-            component: Component | None = DEFAULT_COMPONENT,
-    ) -> Any:
-        ...
+        self,
+        dependency_type: Any,
+        component: Component | None = DEFAULT_COMPONENT,
+    ) -> Any: ...
 
     async def get(
-            self,
-            dependency_type: Any,
-            component: Component | None = DEFAULT_COMPONENT,
+        self,
+        dependency_type: Any,
+        component: Component | None = DEFAULT_COMPONENT,
     ) -> Any:
         lock = self.lock
         try:
             if lock is None:
                 return await self._get_unlocked(
-                    dependency_type if component == DEFAULT_COMPONENT
+                    dependency_type
+                    if component == DEFAULT_COMPONENT
                     else DependencyKey(dependency_type, component),
                 )
             async with lock:
                 return await self._get_unlocked(
-                    dependency_type if component == DEFAULT_COMPONENT
+                    dependency_type
+                    if component == DEFAULT_COMPONENT
                     else DependencyKey(dependency_type, component),
                 )
         except (NoFactoryError, NoActiveFactoryError) as e:
@@ -189,19 +193,17 @@ class AsyncContainer:
 
     @overload
     def get_sync(
-            self,
-            dependency_type: type[T],
-            component: Component | None = DEFAULT_COMPONENT,
-    ) -> T:
-        ...
+        self,
+        dependency_type: type[T],
+        component: Component | None = DEFAULT_COMPONENT,
+    ) -> T: ...
 
     @overload
     def get_sync(
-            self,
-            dependency_type: Any,
-            component: Component | None = DEFAULT_COMPONENT,
-    ) -> Any:
-        ...
+        self,
+        dependency_type: Any,
+        component: Component | None = DEFAULT_COMPONENT,
+    ) -> Any: ...
 
     def get_sync(
         self,
@@ -210,7 +212,8 @@ class AsyncContainer:
     ) -> Any:
         try:
             return self._get_sync(
-                dependency_type if component == DEFAULT_COMPONENT
+                dependency_type
+                if component == DEFAULT_COMPONENT
                 else DependencyKey(dependency_type, component),
             )
         except (NoFactoryError, NoActiveFactoryError) as e:
@@ -309,99 +312,100 @@ class AsyncContainer:
             self._has,
         )
 
-    async def _get_concurrent(self, key: CompilationKey) -> Any:
-        from dishka.concurrency._layers import (
+    async def _get_concurrent(
+        self,
+        key: CompilationKey,
+    ) -> Any:
+        from dishka.concurrency._layers import (  # noqa: PLC0415
             compute_topological_layers,
         )
 
         dep_key = compilation_to_dependency_key(key)
-        # Check if the factory exists in this scope
         factory = self.registry.get_factory(dep_key)
         if factory is None or factory.scope != self.registry.scope:
-            # Not in this scope — delegate to non-concurrent path
             return await self._get_sequential(key)
 
         layers = compute_topological_layers(
-            self.registry, dep_key, self._cache,
+            self.registry,
+            dep_key,
+            self._cache,
         )
         if not layers:
-            # All cached — return from cache
             comp_key = dep_key.as_compilation_key()
             if comp_key in self._cache:
                 return self._cache[comp_key]
             return self._cache[key]
 
-        strategy = self._concurrency
         for layer in layers:
-            if len(layer) == 1:
-                # Single factory — direct call, no overhead
-                dk, _factory = layer[0]
-                compiled = self.registry.get_compiled_async(
-                    dk.as_compilation_key(),
-                )
-                if compiled is not None:
-                    await compiled(
-                        self.parent_getter,
-                        self._exits,
-                        self._cache,
-                        self._context,
-                        self,
-                        self._has,
-                    )
-            else:
-                # Multiple independent factories — concurrent
-                compiled_pairs = []
-                for dk, fact in layer:
-                    comp_key = dk.as_compilation_key()
-                    compiled = (
-                        self.registry.get_compiled_async(comp_key)
-                    )
-                    if compiled is None:
-                        continue
-                    compiled_pairs.append(
-                        (dk, compiled, fact.executor),
-                    )
-
-                if not compiled_pairs:
-                    continue
-
-                if hasattr(strategy, "compile"):
-                    layer_fn = strategy.compile([
-                        (dk, c)
-                        for dk, c, _ex in compiled_pairs
-                    ])
-                    await layer_fn(
-                        self.parent_getter,
-                        self._exits,
-                        self._cache,
-                        self._context,
-                        self,
-                        self._has,
-                    )
-                else:
-                    callables = []
-                    for dk, c, executor in compiled_pairs:
-                        async def _invoke(
-                            cf: Any = c,
-                        ) -> object:
-                            return await cf(
-                                self.parent_getter,
-                                self._exits,
-                                self._cache,
-                                self._context,
-                                self,
-                                self._has,
-                            )
-
-                        callables.append(
-                            (dk, _invoke, executor),
-                        )
-                    await strategy.run(callables)
+            await self._dispatch_layer(layer)
 
         comp_key = dep_key.as_compilation_key()
         if comp_key in self._cache:
             return self._cache[comp_key]
         return self._cache.get(key)
+
+    async def _dispatch_layer(self, layer: list) -> None:
+        if len(layer) == 1:
+            dk, _factory = layer[0]
+            compiled = self.registry.get_compiled_async(
+                dk.as_compilation_key(),
+            )
+            if compiled is not None:
+                await compiled(
+                    self.parent_getter,
+                    self._exits,
+                    self._cache,
+                    self._context,
+                    self,
+                    self._has,
+                )
+            return
+
+        compiled_pairs = []
+        for dk, fact in layer:
+            comp_key = dk.as_compilation_key()
+            compiled = self.registry.get_compiled_async(comp_key)
+            if compiled is not None:
+                compiled_pairs.append(
+                    (dk, compiled, fact.executor),
+                )
+
+        if not compiled_pairs:
+            return
+
+        strategy = self._concurrency
+        if hasattr(strategy, "compile"):
+            layer_fn = strategy.compile(
+                [(dk, c) for dk, c, _ex in compiled_pairs],
+            )
+            await layer_fn(
+                self.parent_getter,
+                self._exits,
+                self._cache,
+                self._context,
+                self,
+                self._has,
+            )
+        else:
+            callables = []
+            for dk, c, executor in compiled_pairs:
+
+                async def _invoke(
+                    cf: Any = c,
+                ) -> object:
+                    return await cf(
+                        self.parent_getter,
+                        self._exits,
+                        self._cache,
+                        self._context,
+                        self,
+                        self._has,
+                    )
+
+                callables.append(
+                    (dk, _invoke, executor),
+                )
+            await strategy.run(callables)
 
     async def _get_sequential(self, key: CompilationKey) -> Any:
         compiled = self.registry.get_compiled_async(key)
@@ -492,14 +496,16 @@ class AsyncContainer:
                 return False
             return await self.parent_container._has(marker)  # noqa: SLF001
 
-        return bool(await compiled(
-            self._get_unlocked,
-            self._exits,
-            self._cache,
-            self._context,
-            self,
-            self._has,
-        ))
+        return bool(
+            await compiled(
+                self._get_unlocked,
+                self._exits,
+                self._cache,
+                self._context,
+                self,
+                self._has,
+            ),
+        )
 
     def _has_sync(self, marker: CompilationKey) -> bool:
         compiled = self.registry.get_compiled_activation(marker)
@@ -508,14 +514,16 @@ class AsyncContainer:
                 return False
             return self.parent_container._has_sync(marker)  # noqa: SLF001
 
-        return bool(compiled(
-            self._get_sync,
-            self._exits,
-            self._cache,
-            self._context,
-            self,
-            self._has_sync,
-        ))
+        return bool(
+            compiled(
+                self._get_sync,
+                self._exits,
+                self._cache,
+                self._context,
+                self,
+                self._has_sync,
+            ),
+        )
 
     def _has_context(self, marker: Any) -> bool:
         return self._context is not None and marker in self._context
@@ -526,6 +534,7 @@ class HasProvider(Provider):
     This provider is used only for direct access on Has/HasContext.
     Basic implementation is inlined in code builder.
     """
+
     @activate(Has)
     async def has(
         self,
@@ -533,7 +542,8 @@ class HasProvider(Provider):
         container: AsyncContainer,
     ) -> bool:
         return await container._has(  # noqa: SLF001
-            marker.type_hint.value if marker.component == DEFAULT_COMPONENT
+            marker.type_hint.value
+            if marker.component == DEFAULT_COMPONENT
             else DependencyKey(marker.type_hint.value, marker.component),
         )
 
@@ -547,16 +557,18 @@ class HasProvider(Provider):
 
 
 def make_async_container(
-        *providers: BaseProvider,
-        scopes: type[BaseScope] = Scope,
-        context: dict[Any, Any] | None = None,
-        lock_factory: Callable[
-            [], AbstractAsyncContextManager[Any],
-        ] | None = Lock,
-        skip_validation: bool = False,
-        start_scope: BaseScope | None = None,
-        validation_settings: ValidationSettings = DEFAULT_VALIDATION,
-        concurrency: Any | None = None,
+    *providers: BaseProvider,
+    scopes: type[BaseScope] = Scope,
+    context: dict[Any, Any] | None = None,
+    lock_factory: Callable[
+        [],
+        AbstractAsyncContextManager[Any],
+    ]
+    | None = Lock,
+    skip_validation: bool = False,
+    start_scope: BaseScope | None = None,
+    validation_settings: ValidationSettings = DEFAULT_VALIDATION,
+    concurrency: Any | None = None,
 ) -> AsyncContainer:
     context_provider = make_root_context_provider(providers, context, scopes)
     has_provider = HasProvider()

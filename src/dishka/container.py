@@ -55,16 +55,18 @@ class Container:
     )
 
     def __init__(
-            self,
-            registry: Registry,
-            parent_container: "Container | None",
-            context: dict[Any, Any] | None,
-            lock_factory: Callable[
-                [], AbstractContextManager[Any],
-            ] | None,
-            parent_closer: ExitCallable | None,
-            parent_getter: Callable[[CompilationKey], Any] | None,
-            concurrency: Any | None = None,
+        self,
+        registry: Registry,
+        parent_container: "Container | None",
+        context: dict[Any, Any] | None,
+        lock_factory: Callable[
+            [],
+            AbstractContextManager[Any],
+        ]
+        | None,
+        parent_closer: ExitCallable | None,
+        parent_getter: Callable[[CompilationKey], Any] | None,
+        concurrency: Any | None = None,
     ) -> None:
         self.registry = registry
         self._context = context
@@ -95,12 +97,14 @@ class Container:
         return ContextProxy(cache=self._cache, context=self._context)
 
     def __call__(
-            self,
-            context: dict[Any, Any] | None = None,
-            lock_factory: Callable[
-                [], AbstractContextManager[Any],
-            ] | None = None,
-            scope: BaseScope | None = None,
+        self,
+        context: dict[Any, Any] | None = None,
+        lock_factory: Callable[
+            [],
+            AbstractContextManager[Any],
+        ]
+        | None = None,
+        scope: BaseScope | None = None,
     ) -> "Container":
         """
         Prepare container for entering the inner scope.
@@ -153,35 +157,35 @@ class Container:
 
     @overload
     def get(
-            self,
-            dependency_type: type[T],
-            component: Component | None = DEFAULT_COMPONENT,
-    ) -> T:
-        ...
+        self,
+        dependency_type: type[T],
+        component: Component | None = DEFAULT_COMPONENT,
+    ) -> T: ...
 
     @overload
     def get(
-            self,
-            dependency_type: Any,
-            component: Component | None = DEFAULT_COMPONENT,
-    ) -> Any:
-        ...
+        self,
+        dependency_type: Any,
+        component: Component | None = DEFAULT_COMPONENT,
+    ) -> Any: ...
 
     def get(
-            self,
-            dependency_type: Any,
-            component: Component | None = DEFAULT_COMPONENT,
+        self,
+        dependency_type: Any,
+        component: Component | None = DEFAULT_COMPONENT,
     ) -> Any:
         lock = self.lock
         try:
             if lock is None:
                 return self._get_unlocked(
-                    dependency_type if component == DEFAULT_COMPONENT
+                    dependency_type
+                    if component == DEFAULT_COMPONENT
                     else DependencyKey(dependency_type, component),
                 )
             with lock:
                 return self._get_unlocked(
-                    dependency_type if component == DEFAULT_COMPONENT
+                    dependency_type
+                    if component == DEFAULT_COMPONENT
                     else DependencyKey(dependency_type, component),
                 )
         except (NoFactoryError, NoActiveFactoryError) as e:
@@ -241,8 +245,11 @@ class Container:
             self._has,
         )
 
-    def _get_concurrent(self, key: CompilationKey) -> Any:
-        from dishka.concurrency._layers import (
+    def _get_concurrent(
+        self,
+        key: CompilationKey,
+    ) -> Any:
+        from dishka.concurrency._layers import (  # noqa: PLC0415
             compute_topological_layers,
         )
 
@@ -252,7 +259,9 @@ class Container:
             return self._get_sequential(key)
 
         layers = compute_topological_layers(
-            self.registry, dep_key, self._cache,
+            self.registry,
+            dep_key,
+            self._cache,
         )
         if not layers:
             comp_key = dep_key.as_compilation_key()
@@ -260,75 +269,76 @@ class Container:
                 return self._cache[comp_key]
             return self._cache[key]
 
-        strategy = self._concurrency
         for layer in layers:
-            if len(layer) == 1:
-                dk, _factory = layer[0]
-                compiled = self.registry.get_compiled(
-                    dk.as_compilation_key(),
-                )
-                if compiled is not None:
-                    compiled(
-                        self.parent_getter,
-                        self._exits,
-                        self._cache,
-                        self._context,
-                        self,
-                        self._has,
-                    )
-            else:
-                compiled_pairs = []
-                for dk, fact in layer:
-                    comp_key = dk.as_compilation_key()
-                    compiled = (
-                        self.registry.get_compiled(comp_key)
-                    )
-                    if compiled is None:
-                        continue
-                    compiled_pairs.append(
-                        (dk, compiled, fact.executor),
-                    )
-
-                if not compiled_pairs:
-                    continue
-
-                if hasattr(strategy, "compile"):
-                    layer_fn = strategy.compile([
-                        (dk, c)
-                        for dk, c, _ex in compiled_pairs
-                    ])
-                    layer_fn(
-                        self.parent_getter,
-                        self._exits,
-                        self._cache,
-                        self._context,
-                        self,
-                        self._has,
-                    )
-                else:
-                    callables = []
-                    for dk, c, executor in compiled_pairs:
-                        def _invoke(
-                            cf: Any = c,
-                        ) -> object:
-                            return cf(
-                                self.parent_getter,
-                                self._exits,
-                                self._cache,
-                                self._context,
-                                self,
-                                self._has,
-                            )
-
-                        callables.append(
-                            (dk, _invoke, executor),
-                        )
-                    strategy.run(callables)
+            self._dispatch_layer(layer)
 
         comp_key = dep_key.as_compilation_key()
         if comp_key in self._cache:
             return self._cache[comp_key]
         return self._cache.get(key)
+
+    def _dispatch_layer(self, layer: list) -> None:
+        if len(layer) == 1:
+            dk, _factory = layer[0]
+            compiled = self.registry.get_compiled(
+                dk.as_compilation_key(),
+            )
+            if compiled is not None:
+                compiled(
+                    self.parent_getter,
+                    self._exits,
+                    self._cache,
+                    self._context,
+                    self,
+                    self._has,
+                )
+            return
+
+        compiled_pairs = []
+        for dk, fact in layer:
+            comp_key = dk.as_compilation_key()
+            compiled = self.registry.get_compiled(comp_key)
+            if compiled is not None:
+                compiled_pairs.append(
+                    (dk, compiled, fact.executor),
+                )
+
+        if not compiled_pairs:
+            return
+
+        strategy = self._concurrency
+        if hasattr(strategy, "compile"):
+            layer_fn = strategy.compile(
+                [(dk, c) for dk, c, _ex in compiled_pairs],
+            )
+            layer_fn(
+                self.parent_getter,
+                self._exits,
+                self._cache,
+                self._context,
+                self,
+                self._has,
+            )
+        else:
+            callables = []
+            for dk, c, executor in compiled_pairs:
+
+                def _invoke(
+                    cf: Any = c,
+                ) -> object:
+                    return cf(
+                        self.parent_getter,
+                        self._exits,
+                        self._cache,
+                        self._context,
+                        self,
+                        self._has,
+                    )
+
+                callables.append(
+                    (dk, _invoke, executor),
+                )
+            strategy.run(callables)
 
     def close(self, exception: BaseException | None = None) -> None:
         self.__exit__(None, exception, None)
@@ -337,10 +347,10 @@ class Container:
         return self
 
     def __exit__(
-            self,
-            exc_type: type[BaseException] | None = None,
-            exception: BaseException | None = None,
-            exc_tb: TracebackType | None = None,
+        self,
+        exc_type: type[BaseException] | None = None,
+        exception: BaseException | None = None,
+        exc_tb: TracebackType | None = None,
     ) -> None:
         errors = None
         while self._exits:
@@ -374,14 +384,16 @@ class Container:
             if not self.parent_container:
                 return False
             return self.parent_container._has(marker)  # noqa: SLF001
-        return bool(compiled(
-            self._get_unlocked,
-            self._exits,
-            self._cache,
-            self._context,
-            self,
-            self._has,
-        ))
+        return bool(
+            compiled(
+                self._get_unlocked,
+                self._exits,
+                self._cache,
+                self._context,
+                self,
+                self._has,
+            ),
+        )
 
     def _has_context(self, marker: Any) -> bool:
         return self._context is not None and marker in self._context
@@ -392,6 +404,7 @@ class HasProvider(Provider):
     This provider is used only for direct access on Has/HasContext.
     Basic implementation is inlined in code builder.
     """
+
     @activate(Has)
     def has(
         self,
@@ -399,7 +412,8 @@ class HasProvider(Provider):
         container: Container,
     ) -> bool:
         return container._has(  # noqa: SLF001
-            marker.type_hint.value if marker.component == DEFAULT_COMPONENT
+            marker.type_hint.value
+            if marker.component == DEFAULT_COMPONENT
             else DependencyKey(marker.type_hint.value, marker.component),
         )
 
@@ -409,18 +423,18 @@ class HasProvider(Provider):
         marker: HasContext,
         container: Container,
     ) -> bool:
-        return container._has_context(marker.value)   # noqa: SLF001
+        return container._has_context(marker.value)  # noqa: SLF001
 
 
 def make_container(
-        *providers: BaseProvider,
-        scopes: type[BaseScope] = Scope,
-        context: dict[Any, Any] | None = None,
-        lock_factory: Callable[[], AbstractContextManager[Any]] | None = Lock,
-        skip_validation: bool = False,
-        start_scope: BaseScope | None = None,
-        validation_settings: ValidationSettings = DEFAULT_VALIDATION,
-        concurrency: Any | None = None,
+    *providers: BaseProvider,
+    scopes: type[BaseScope] = Scope,
+    context: dict[Any, Any] | None = None,
+    lock_factory: Callable[[], AbstractContextManager[Any]] | None = Lock,
+    skip_validation: bool = False,
+    start_scope: BaseScope | None = None,
+    validation_settings: ValidationSettings = DEFAULT_VALIDATION,
+    concurrency: Any | None = None,
 ) -> Container:
     context_provider = make_root_context_provider(providers, context, scopes)
     has_provider = HasProvider()
