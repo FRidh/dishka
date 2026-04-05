@@ -277,7 +277,7 @@ class Container:
                         self._has,
                     )
             else:
-                callables = []
+                compiled_pairs = []
                 for dk, fact in layer:
                     comp_key = dk.as_compilation_key()
                     compiled = (
@@ -285,24 +285,44 @@ class Container:
                     )
                     if compiled is None:
                         continue
-
-                    def _invoke(
-                        c: Any = compiled,
-                    ) -> object:
-                        return c(
-                            self.parent_getter,
-                            self._exits,
-                            self._cache,
-                            self._context,
-                            self,
-                            self._has,
-                        )
-
-                    callables.append(
-                        (dk, _invoke, fact.executor),
+                    compiled_pairs.append(
+                        (dk, compiled, fact.executor),
                     )
 
-                if callables:
+                if not compiled_pairs:
+                    continue
+
+                if hasattr(strategy, "compile"):
+                    layer_fn = strategy.compile([
+                        (dk, c)
+                        for dk, c, _ex in compiled_pairs
+                    ])
+                    layer_fn(
+                        self.parent_getter,
+                        self._exits,
+                        self._cache,
+                        self._context,
+                        self,
+                        self._has,
+                    )
+                else:
+                    callables = []
+                    for dk, c, executor in compiled_pairs:
+                        def _invoke(
+                            cf: Any = c,
+                        ) -> object:
+                            return cf(
+                                self.parent_getter,
+                                self._exits,
+                                self._cache,
+                                self._context,
+                                self,
+                                self._has,
+                            )
+
+                        callables.append(
+                            (dk, _invoke, executor),
+                        )
                     strategy.run(callables)
 
         comp_key = dep_key.as_compilation_key()

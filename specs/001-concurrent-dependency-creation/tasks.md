@@ -163,21 +163,21 @@
 
 ### Tests for User Story 6
 
-- [ ] T041 [P] [US6] Test codegen/runtime parity for AsyncioStrategy: same results, ordering, error behavior in tests/unit/container/test_concurrent_creation/test_codegen.py — covers acceptance scenarios 1, 3
-- [ ] T042 [P] [US6] Test fallback: strategy without compile() uses run() at resolution time, no error in tests/unit/container/test_concurrent_creation/test_codegen.py — covers acceptance scenarios 2, 6
-- [ ] T043 [P] [US6] Test codegen/runtime parity for TrioStrategy in tests/unit/container/test_concurrent_creation/test_codegen.py — covers acceptance scenario 4
-- [ ] T044 [P] [US6] Test codegen/runtime parity for ThreadPoolStrategy in tests/unit/container/test_concurrent_creation/test_codegen.py — covers acceptance scenario 5
-- [ ] T045 [P] [US6] Test codegen diamond deduplication: compiled code runs each factory exactly once in tests/unit/container/test_concurrent_creation/test_codegen.py — covers acceptance scenario 7
+- [x] T041 [P] [US6] Test codegen/runtime parity for AsyncioStrategy: same results, ordering, error behavior in tests/unit/container/test_concurrent_creation/test_codegen.py — covers acceptance scenarios 1, 3
+- [x] T042 [P] [US6] Test fallback: strategy without compile() uses run() at resolution time, no error in tests/unit/container/test_concurrent_creation/test_codegen.py — covers acceptance scenarios 2, 6
+- [x] T043 [P] [US6] Test codegen/runtime parity for TrioStrategy in tests/unit/container/test_concurrent_creation/test_codegen.py — covers acceptance scenario 4
+- [x] T044 [P] [US6] Test codegen/runtime parity for ThreadPoolStrategy in tests/unit/container/test_concurrent_creation/test_codegen.py — covers acceptance scenario 5
+- [x] T045 [P] [US6] Test codegen diamond deduplication: compiled code runs each factory exactly once in tests/unit/container/test_concurrent_creation/test_codegen.py — covers acceptance scenario 7
 
 ### Implementation for User Story 6
 
-- [ ] T046 [US6] Implement `compile()` on `AsyncioStrategy` — emit `async with TaskGroup()` + `create_task()` code into CodeBuilder in src/dishka/concurrency/_asyncio.py
-- [ ] T047 [US6] Implement `compile()` on `AsyncioSemaphoreStrategy` — emit `TaskGroup` + `Semaphore` acquire/release in src/dishka/concurrency/_asyncio.py
-- [ ] T048 [P] [US6] Implement `compile()` on `TrioStrategy` — emit `async with trio.open_nursery()` + wrapper coroutines in src/dishka/concurrency/_trio.py
-- [ ] T049 [P] [US6] Implement `compile()` on `ThreadPoolStrategy` — emit `executor.submit()` + result collection in src/dishka/concurrency/_sync.py
-- [ ] T050 [P] [US6] Implement `compile()` on `ProcessPoolStrategy` — emit `executor.submit()` for plain factories + sequential for generators in src/dishka/concurrency/_sync.py
-- [ ] T051 [US6] Integrate compile() hook into factory compilation pipeline: detect `hasattr(strategy, 'compile')` at container creation time, call `strategy.compile(builder, callables)` for concurrent layers, else emit runtime `strategy.run()` calls — modify src/dishka/code_tools/factory_compiler.py and src/dishka/registry.py
-- [ ] T052 [US6] Ensure single-factory layers emit direct calls (no strategy involvement) in the codegen path in src/dishka/code_tools/factory_compiler.py
+- [x] T046 [US6] Implement `compile()` on `AsyncioStrategy` — emit `async with TaskGroup()` + `create_task()` code into CodeBuilder in src/dishka/concurrency/_asyncio.py
+- [x] T047 [US6] Implement `compile()` on `AsyncioSemaphoreStrategy` — emit `TaskGroup` + `Semaphore` acquire/release in src/dishka/concurrency/_asyncio.py
+- [x] T048 [P] [US6] Implement `compile()` on `TrioStrategy` — emit `async with trio.open_nursery()` + wrapper coroutines in src/dishka/concurrency/_trio.py
+- [x] T049 [P] [US6] Implement `compile()` on `ThreadPoolStrategy` — emit `executor.submit()` + result collection in src/dishka/concurrency/_sync.py
+- [x] T050 [P] [US6] Implement `compile()` on `ProcessPoolStrategy` — emit `executor.submit()` for plain factories + sequential for generators in src/dishka/concurrency/_sync.py
+- [x] T051 [US6] Integrate compile() hook into factory compilation pipeline: detect `hasattr(strategy, 'compile')` at container creation time, call `strategy.compile(builder, callables)` for concurrent layers, else emit runtime `strategy.run()` calls — modify src/dishka/async_container.py and src/dishka/container.py
+- [x] T052 [US6] Ensure single-factory layers emit direct calls (no strategy involvement) in the codegen path in src/dishka/async_container.py and src/dishka/container.py
 
 **Checkpoint**: All built-in strategies have compile() implementations. Codegen/runtime parity verified. Fallback for custom strategies works.
 
