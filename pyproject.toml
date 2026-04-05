@@ -56,6 +56,7 @@ dev = [
     { include-group = "typos" },
     { include-group = "zizmor" },
     { include-group = "ast-grep" },
+    "trio>=0.33.0",
 ]
 
 [project.urls]

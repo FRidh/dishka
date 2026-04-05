@@ -120,12 +120,12 @@
 
 ### Tests for User Story 4
 
-- [ ] T030 [P] [US4] Test trio concurrent execution with independent factories using trio event/barrier in tests/unit/container/test_concurrent_creation/test_trio.py — covers acceptance scenario 1
-- [ ] T031 [P] [US4] Test trio error propagation: factory raises, cancellation via trio semantics, no tasks remain in tests/unit/container/test_concurrent_creation/test_trio.py — covers acceptance scenario 2
+- [x] T030 [P] [US4] Test trio concurrent execution with independent factories using trio event/barrier in tests/unit/container/test_concurrent_creation/test_trio.py — covers acceptance scenario 1
+- [x] T031 [P] [US4] Test trio error propagation: factory raises, cancellation via trio semantics, no tasks remain in tests/unit/container/test_concurrent_creation/test_trio.py — covers acceptance scenario 2
 
 ### Implementation for User Story 4
 
-- [ ] T032 [US4] Implement `TrioStrategy` with `run()` method using `trio.open_nursery()` in src/dishka/concurrency/_trio.py — wrapper coroutines collect results into dict by index
+- [x] T032 [US4] Implement `TrioStrategy` with `run()` method using `trio.open_nursery()` in src/dishka/concurrency/_trio.py — wrapper coroutines collect results into dict by index
 
 **Checkpoint**: trio concurrent resolution works. Error propagation and cancellation verified via trio semantics.
 
