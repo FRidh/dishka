@@ -53,18 +53,18 @@
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T011 [P] [US1] Test concurrent execution of two independent async factories using asyncio barrier/event in tests/unit/container/test_concurrent_creation/test_asyncio.py — covers acceptance scenario 1
-- [ ] T012 [P] [US1] Test diamond deduplication: Root → A, B → Leaf; verify Leaf created once, A and B concurrent in tests/unit/container/test_concurrent_creation/test_diamond.py — covers acceptance scenario 2
-- [ ] T013 [P] [US1] Test sequential behavior when concurrency is not configured (no regression) in tests/unit/container/test_concurrent_creation/test_asyncio.py — covers acceptance scenario 3
-- [ ] T014 [P] [US1] Test error propagation: factory raises, no further factories started, no background tasks remain in tests/unit/container/test_concurrent_creation/test_asyncio.py — covers acceptance scenario 4
-- [ ] T015 [P] [US1] Test cancellation safety: parent task cancelled during get(), all in-progress factories cancelled in tests/unit/container/test_concurrent_creation/test_asyncio.py — covers acceptance scenario 5
-- [ ] T016 [P] [US1] Test async generator factories: yield value, register cleanup, finalize on scope exit in tests/unit/container/test_concurrent_creation/test_asyncio.py — covers acceptance scenario 6
+- [x] T011 [P] [US1] Test concurrent execution of two independent async factories using asyncio barrier/event in tests/unit/container/test_concurrent_creation/test_asyncio.py — covers acceptance scenario 1
+- [x] T012 [P] [US1] Test diamond deduplication: Root → A, B → Leaf; verify Leaf created once, A and B concurrent in tests/unit/container/test_concurrent_creation/test_diamond.py — covers acceptance scenario 2
+- [x] T013 [P] [US1] Test sequential behavior when concurrency is not configured (no regression) in tests/unit/container/test_concurrent_creation/test_asyncio.py — covers acceptance scenario 3
+- [x] T014 [P] [US1] Test error propagation: factory raises, no further factories started, no background tasks remain in tests/unit/container/test_concurrent_creation/test_asyncio.py — covers acceptance scenario 4
+- [x] T015 [P] [US1] Test cancellation safety: parent task cancelled during get(), all in-progress factories cancelled in tests/unit/container/test_concurrent_creation/test_asyncio.py — covers acceptance scenario 5
+- [x] T016 [P] [US1] Test async generator factories: yield value, register cleanup, finalize on scope exit in tests/unit/container/test_concurrent_creation/test_asyncio.py — covers acceptance scenario 6
 
 ### Implementation for User Story 1
 
-- [ ] T017 [US1] Implement `AsyncioStrategy` with `run()` method using `asyncio.TaskGroup` in src/dishka/concurrency/_asyncio.py — unwrap single-exception ExceptionGroups to preserve original error type
-- [ ] T018 [US1] Integrate concurrent resolution path into `AsyncContainer._get_unlocked()` in src/dishka/async_container.py — when `_concurrency` is set: compute layers, dispatch each layer via strategy.run(), write results to cache, register generators in _exits
-- [ ] T019 [US1] Handle edge case: single-factory layers skip strategy (direct call, no overhead) in the concurrent resolution path in src/dishka/async_container.py
+- [x] T017 [US1] Implement `AsyncioStrategy` with `run()` method using `asyncio.TaskGroup` in src/dishka/concurrency/_asyncio.py — unwrap single-exception ExceptionGroups to preserve original error type
+- [x] T018 [US1] Integrate concurrent resolution path into `AsyncContainer._get_unlocked()` in src/dishka/async_container.py — when `_concurrency` is set: compute layers, dispatch each layer via strategy.run(), write results to cache, register generators in _exits
+- [x] T019 [US1] Handle edge case: single-factory layers skip strategy (direct call, no overhead) in the concurrent resolution path in src/dishka/async_container.py
 
 **Checkpoint**: Async concurrent resolution works end-to-end with asyncio. Diamond dedup, error propagation, cancellation, and generator cleanup all verified.
 

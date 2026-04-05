@@ -268,6 +268,9 @@ class AsyncContainer:
             return await self._get_unlocked(key)
 
     async def _get_unlocked(self, key: CompilationKey) -> Any:
+        if self._concurrency is not None:
+            return await self._get_concurrent(key)
+
         compiled = self.registry.get_compiled_async(key)
         if compiled is None:
             if self.parent_getter is None:
@@ -295,6 +298,121 @@ class AsyncContainer:
                 )
                 ex.suggest_abstract_factories.extend(abstract_dependencies)
                 ex.suggest_concrete_factories.extend(concrete_dependencies)
+                raise
+
+        return await compiled(
+            self.parent_getter,
+            self._exits,
+            self._cache,
+            self._context,
+            self,
+            self._has,
+        )
+
+    async def _get_concurrent(self, key: CompilationKey) -> Any:
+        from dishka.concurrency._layers import (
+            compute_topological_layers,
+        )
+
+        dep_key = compilation_to_dependency_key(key)
+        # Check if the factory exists in this scope
+        factory = self.registry.get_factory(dep_key)
+        if factory is None or factory.scope != self.registry.scope:
+            # Not in this scope — delegate to non-concurrent path
+            return await self._get_sequential(key)
+
+        layers = compute_topological_layers(
+            self.registry, dep_key, self._cache,
+        )
+        if not layers:
+            # All cached — return from cache
+            comp_key = dep_key.as_compilation_key()
+            if comp_key in self._cache:
+                return self._cache[comp_key]
+            return self._cache[key]
+
+        strategy = self._concurrency
+        for layer in layers:
+            if len(layer) == 1:
+                # Single factory — direct call, no overhead
+                dk, _factory = layer[0]
+                compiled = self.registry.get_compiled_async(
+                    dk.as_compilation_key(),
+                )
+                if compiled is not None:
+                    await compiled(
+                        self.parent_getter,
+                        self._exits,
+                        self._cache,
+                        self._context,
+                        self,
+                        self._has,
+                    )
+            else:
+                # Multiple independent factories — concurrent
+                callables = []
+                for dk, _factory in layer:
+                    comp_key = dk.as_compilation_key()
+                    compiled = (
+                        self.registry.get_compiled_async(comp_key)
+                    )
+                    if compiled is None:
+                        continue
+
+                    async def _invoke(
+                        c: Any = compiled,
+                    ) -> object:
+                        return await c(
+                            self.parent_getter,
+                            self._exits,
+                            self._cache,
+                            self._context,
+                            self,
+                            self._has,
+                        )
+
+                    callables.append((dk, _invoke))
+
+                if callables:
+                    await strategy.run(callables)
+
+        comp_key = dep_key.as_compilation_key()
+        if comp_key in self._cache:
+            return self._cache[comp_key]
+        return self._cache.get(key)
+
+    async def _get_sequential(self, key: CompilationKey) -> Any:
+        compiled = self.registry.get_compiled_async(key)
+        if compiled is None:
+            if self.parent_getter is None:
+                dep_key = compilation_to_dependency_key(key)
+                abstract_dependencies = (
+                    self.registry.get_more_abstract_factories(dep_key)
+                )
+                concrete_dependencies = (
+                    self.registry.get_more_concrete_factories(dep_key)
+                )
+                raise NoFactoryError(
+                    dep_key,
+                    suggest_abstract_factories=abstract_dependencies,
+                    suggest_concrete_factories=concrete_dependencies,
+                )
+            try:
+                return await self.parent_getter(key)
+            except NoFactoryError as ex:
+                dep_key = compilation_to_dependency_key(key)
+                abstract_dependencies = (
+                    self.registry.get_more_abstract_factories(dep_key)
+                )
+                concrete_dependencies = (
+                    self.registry.get_more_concrete_factories(dep_key)
+                )
+                ex.suggest_abstract_factories.extend(
+                    abstract_dependencies,
+                )
+                ex.suggest_concrete_factories.extend(
+                    concrete_dependencies,
+                )
                 raise
 
         return await compiled(
