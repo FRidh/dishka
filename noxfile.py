@@ -121,3 +121,17 @@ def real_world(session: nox.Session) -> None:
         silent=False,
     )
     session.run("pytest", "examples/real_world/tests/")
+
+
+@nox.session()
+def bench(session: nox.Session) -> None:
+    session.install(
+        *EDITABLE_INSTALL,
+        "-r", "requirements/bench.txt",
+        silent=False,
+    )
+    session.run(
+        "pytest", "benchmarks/",
+        "--benchmark-only", "-v",
+        *session.posargs,
+    )

@@ -309,3 +309,10 @@ specified otherwise.
 
 This structure allows you to build different parts of the application separately without worrying about using the same
 types.
+
+**Concurrency Strategy** is an opt-in mechanism for creating independent dependencies in parallel instead of one by one.
+Pass a strategy via the `concurrency` parameter of `make_container()` or `make_async_container()`.
+The container analyses the dependency graph, groups factories into topological layers, and runs independent factories
+within each layer concurrently.
+Built-in strategies include `AsyncioStrategy`, `AsyncioSemaphoreStrategy`, `ThreadPoolStrategy`,
+and `TrioStrategy`. Requires Python 3.11+.

@@ -47,6 +47,7 @@ Key features:
    advanced/context
    advanced/generics
    advanced/scopes
+   advanced/concurrency
    advanced/when
    advanced/collect
    advanced/testing/index

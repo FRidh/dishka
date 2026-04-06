@@ -116,6 +116,11 @@ ignore = [
 [per-file-target-version]
 "tests/unit/container/pep695_new_syntax.py" = "py312"
 "tests/unit/container/type_alias_type_provider.py" = "py312"
+"src/dishka/concurrency/_asyncio.py" = "py311"
+"src/dishka/concurrency/_trio.py" = "py311"
+"src/dishka/concurrency/_sync.py" = "py311"
+"src/dishka/concurrency/_layers.py" = "py311"
+"src/dishka/concurrency/__init__.py" = "py311"
 
 [lint.isort]
 no-lines-before = ["local-folder"]

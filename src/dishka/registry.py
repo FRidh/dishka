@@ -383,6 +383,7 @@ class Registry:
             when_active=None,
             when_component=None,
             when_dependencies=[],
+            executor=None,
         )
 
     def _specialize_generic(
@@ -431,4 +432,5 @@ class Registry:
             when_active=factory.when_active,
             when_component=factory.when_component,
             when_dependencies=factory.when_dependencies,
+            executor=factory.executor,
         )

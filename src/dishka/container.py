@@ -6,6 +6,7 @@ from types import TracebackType
 from typing import Any, TypeVar, overload
 
 from dishka.entities.component import DEFAULT_COMPONENT, Component
+from dishka.entities.concurrency import CompilableSyncStrategy
 from dishka.entities.key import (
     CompilationKey,
     DependencyKey,
@@ -44,6 +45,7 @@ ExitCallable = Callable[
 class Container:
     __slots__ = (
         "_cache",
+        "_concurrency",
         "_context",
         "_exits",
         "lock",
@@ -63,11 +65,13 @@ class Container:
             ] | None,
             parent_closer: ExitCallable | None,
             parent_getter: Callable[[CompilationKey], Any] | None,
+            concurrency: Any | None = None,
     ) -> None:
         self.registry = registry
         self._context = context
         self._cache: dict[Any, object] = {}
         self.parent_container = parent_container
+        self._concurrency = concurrency
 
         self.lock: AbstractContextManager[Any] | None
         if lock_factory is None:
@@ -116,6 +120,7 @@ class Container:
             lock_factory,
             None,
             self._get,
+            concurrency=self._concurrency,
         )
         if scope is None:
             while registry.scope.skip:
@@ -129,6 +134,7 @@ class Container:
                     lock_factory,
                     child.__exit__,
                     child._get,
+                    concurrency=self._concurrency,
                 )
         else:
             while registry.scope is not scope:
@@ -142,6 +148,7 @@ class Container:
                     lock_factory,
                     child.__exit__,
                     child._get,
+                    concurrency=self._concurrency,
                 )
         return child
 
@@ -190,6 +197,12 @@ class Container:
             return self._get_unlocked(key)
 
     def _get_unlocked(self, key: CompilationKey) -> Any:
+        if self._concurrency is not None:
+            return self._get_concurrent(key)
+
+        return self._get_sequential(key)
+
+    def _get_sequential(self, key: CompilationKey) -> Any:
         compiled = self.registry.get_compiled(key)
         if compiled is None:
             if self.parent_getter is None:
@@ -228,6 +241,102 @@ class Container:
             self,
             self._has,
         )
+
+    def _get_concurrent(
+        self,
+        key: CompilationKey,
+    ) -> Any:
+        from dishka.concurrency._layers import (  # noqa: PLC0415
+            compute_topological_layers,
+        )
+
+        dep_key = compilation_to_dependency_key(key)
+        factory = self.registry.get_factory(dep_key)
+        if factory is None or factory.scope != self.registry.scope:
+            return self._get_sequential(key)
+
+        layers = compute_topological_layers(
+            self.registry,
+            dep_key,
+            self._cache,
+        )
+        if not layers:
+            comp_key = dep_key.as_compilation_key()
+            if comp_key in self._cache:
+                return self._cache[comp_key]
+            return self._cache[key]
+
+        if not factory.cache:
+            return self._get_sequential(key)
+
+        for layer in layers:
+            self._dispatch_layer(layer)
+
+        comp_key = dep_key.as_compilation_key()
+        if comp_key in self._cache:
+            return self._cache[comp_key]
+        return self._cache.get(key)
+
+    def _dispatch_layer(self, layer: list) -> None:
+        if len(layer) == 1:
+            dk, _factory = layer[0]
+            compiled = self.registry.get_compiled(
+                dk.as_compilation_key(),
+            )
+            if compiled is not None:
+                compiled(
+                    self.parent_getter,
+                    self._exits,
+                    self._cache,
+                    self._context,
+                    self,
+                    self._has,
+                )
+            return
+
+        compiled_pairs = []
+        for dk, fact in layer:
+            comp_key = dk.as_compilation_key()
+            compiled = self.registry.get_compiled(comp_key)
+            if compiled is not None:
+                compiled_pairs.append(
+                    (dk, compiled, fact.executor),
+                )
+
+        if not compiled_pairs:
+            return
+
+        strategy = self._concurrency
+        if isinstance(strategy, CompilableSyncStrategy):
+            layer_fn = strategy.compile(compiled_pairs)
+            layer_fn(
+                self.parent_getter,
+                self._exits,
+                self._cache,
+                self._context,
+                self,
+                self._has,
+            )
+        else:
+            callables = []
+            for dk, c, executor in compiled_pairs:
+
+                def _invoke(
+                    cf: Any = c,
+                ) -> object:
+                    return cf(
+                        self.parent_getter,
+                        self._exits,
+                        self._cache,
+                        self._context,
+                        self,
+                        self._has,
+                    )
+
+                callables.append(
+                    (dk, _invoke, executor),
+                )
+            strategy.run(callables)
 
     def close(self, exception: BaseException | None = None) -> None:
         self.__exit__(None, exception, None)
@@ -319,6 +428,7 @@ def make_container(
         skip_validation: bool = False,
         start_scope: BaseScope | None = None,
         validation_settings: ValidationSettings = DEFAULT_VALIDATION,
+        concurrency: Any | None = None,
 ) -> Container:
     context_provider = make_root_context_provider(providers, context, scopes)
     has_provider = HasProvider()
@@ -341,6 +451,7 @@ def make_container(
         parent_getter=None,
         parent_closer=None,
         parent_container=None,
+        concurrency=concurrency,
     )
     if start_scope is None:
         while container.registry.scope.skip:
@@ -353,6 +464,7 @@ def make_container(
                 lock_factory=lock_factory,
                 parent_closer=container.__exit__,
                 parent_getter=container._get,  # noqa: SLF001
+                concurrency=concurrency,
             )
     else:
         while container.registry.scope is not start_scope:
@@ -368,6 +480,7 @@ def make_container(
                 lock_factory=lock_factory,
                 parent_closer=container.__exit__,
                 parent_getter=container._get,  # noqa: SLF001
+                concurrency=concurrency,
             )
     return container
 

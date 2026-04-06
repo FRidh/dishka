@@ -6,6 +6,7 @@ from types import TracebackType
 from typing import Any, TypeVar, overload
 
 from dishka.entities.component import DEFAULT_COMPONENT, Component
+from dishka.entities.concurrency import CompilableAsyncStrategy
 from dishka.entities.key import (
     CompilationKey,
     DependencyKey,
@@ -43,6 +44,7 @@ ExitCallable = Callable[
 class AsyncContainer:
     __slots__ = (
         "_cache",
+        "_concurrency",
         "_context",
         "_exits",
         "lock",
@@ -62,11 +64,13 @@ class AsyncContainer:
             ] | None,
             parent_closer: ExitCallable | None,
             parent_getter:  Callable[[CompilationKey], Any] | None,
+            concurrency: Any | None = None,
     ) -> None:
         self.registry = registry
         self._context = context
         self._cache: dict[Any, object] = {}
         self.parent_container = parent_container
+        self._concurrency = concurrency
 
         self.lock: AbstractAsyncContextManager[Any] | None
         if lock_factory is None:
@@ -115,6 +119,7 @@ class AsyncContainer:
             lock_factory,
             None,
             self._get,
+            concurrency=self._concurrency,
         )
         if scope is None:
             while registry.scope.skip:
@@ -128,6 +133,7 @@ class AsyncContainer:
                     lock_factory,
                     child.__aexit__,
                     child._get,
+                    concurrency=self._concurrency,
                 )
         else:
             while registry.scope is not scope:
@@ -141,6 +147,7 @@ class AsyncContainer:
                     lock_factory,
                     child.__aexit__,
                     child._get,
+                    concurrency=self._concurrency,
                 )
         return child
 
@@ -262,6 +269,9 @@ class AsyncContainer:
             return await self._get_unlocked(key)
 
     async def _get_unlocked(self, key: CompilationKey) -> Any:
+        if self._concurrency is not None:
+            return await self._get_concurrent(key)
+
         compiled = self.registry.get_compiled_async(key)
         if compiled is None:
             if self.parent_getter is None:
@@ -289,6 +299,148 @@ class AsyncContainer:
                 )
                 ex.suggest_abstract_factories.extend(abstract_dependencies)
                 ex.suggest_concrete_factories.extend(concrete_dependencies)
+                raise
+
+        return await compiled(
+            self.parent_getter,
+            self._exits,
+            self._cache,
+            self._context,
+            self,
+            self._has,
+        )
+
+    async def _get_concurrent(
+        self,
+        key: CompilationKey,
+    ) -> Any:
+        from dishka.concurrency._layers import (  # noqa: PLC0415
+            compute_topological_layers,
+        )
+
+        dep_key = compilation_to_dependency_key(key)
+        factory = self.registry.get_factory(dep_key)
+        if factory is None or factory.scope != self.registry.scope:
+            return await self._get_sequential(key)
+
+        layers = compute_topological_layers(
+            self.registry,
+            dep_key,
+            self._cache,
+        )
+        if not layers:
+            comp_key = dep_key.as_compilation_key()
+            if comp_key in self._cache:
+                return self._cache[comp_key]
+            return self._cache[key]
+
+        if not factory.cache:
+            # cache=False root: resolve sequentially so that
+            # uncached deps aren't invoked twice (once in the
+            # layer dispatch and once inside the compiled root).
+            return await self._get_sequential(key)
+
+        for layer in layers:
+            await self._dispatch_layer(layer)
+
+        comp_key = dep_key.as_compilation_key()
+        if comp_key in self._cache:
+            return self._cache[comp_key]
+        return self._cache.get(key)
+
+    async def _dispatch_layer(self, layer: list) -> None:
+        if len(layer) == 1:
+            dk, _factory = layer[0]
+            compiled = self.registry.get_compiled_async(
+                dk.as_compilation_key(),
+            )
+            if compiled is not None:
+                await compiled(
+                    self.parent_getter,
+                    self._exits,
+                    self._cache,
+                    self._context,
+                    self,
+                    self._has,
+                )
+            return
+
+        compiled_pairs = []
+        for dk, fact in layer:
+            comp_key = dk.as_compilation_key()
+            compiled = self.registry.get_compiled_async(comp_key)
+            if compiled is not None:
+                compiled_pairs.append(
+                    (dk, compiled, fact.executor),
+                )
+
+        if not compiled_pairs:
+            return
+
+        strategy = self._concurrency
+        if isinstance(strategy, CompilableAsyncStrategy):
+            layer_fn = strategy.compile(compiled_pairs)
+            await layer_fn(
+                self.parent_getter,
+                self._exits,
+                self._cache,
+                self._context,
+                self,
+                self._has,
+            )
+        else:
+            callables = []
+            for dk, c, executor in compiled_pairs:
+
+                async def _invoke(
+                    cf: Any = c,
+                ) -> object:
+                    return await cf(
+                        self.parent_getter,
+                        self._exits,
+                        self._cache,
+                        self._context,
+                        self,
+                        self._has,
+                    )
+
+                callables.append(
+                    (dk, _invoke, executor),
+                )
+            await strategy.run(callables)
+
+    async def _get_sequential(self, key: CompilationKey) -> Any:
+        compiled = self.registry.get_compiled_async(key)
+        if compiled is None:
+            if self.parent_getter is None:
+                dep_key = compilation_to_dependency_key(key)
+                abstract_dependencies = (
+                    self.registry.get_more_abstract_factories(dep_key)
+                )
+                concrete_dependencies = (
+                    self.registry.get_more_concrete_factories(dep_key)
+                )
+                raise NoFactoryError(
+                    dep_key,
+                    suggest_abstract_factories=abstract_dependencies,
+                    suggest_concrete_factories=concrete_dependencies,
+                )
+            try:
+                return await self.parent_getter(key)
+            except NoFactoryError as ex:
+                dep_key = compilation_to_dependency_key(key)
+                abstract_dependencies = (
+                    self.registry.get_more_abstract_factories(dep_key)
+                )
+                concrete_dependencies = (
+                    self.registry.get_more_concrete_factories(dep_key)
+                )
+                ex.suggest_abstract_factories.extend(
+                    abstract_dependencies,
+                )
+                ex.suggest_concrete_factories.extend(
+                    concrete_dependencies,
+                )
                 raise
 
         return await compiled(
@@ -410,6 +562,7 @@ def make_async_container(
         skip_validation: bool = False,
         start_scope: BaseScope | None = None,
         validation_settings: ValidationSettings = DEFAULT_VALIDATION,
+        concurrency: Any | None = None,
 ) -> AsyncContainer:
     context_provider = make_root_context_provider(providers, context, scopes)
     has_provider = HasProvider()
@@ -433,6 +586,7 @@ def make_async_container(
         parent_getter=None,
         parent_closer=None,
         parent_container=None,
+        concurrency=concurrency,
     )
     if start_scope is None:
         while container.registry.scope.skip:
@@ -445,6 +599,7 @@ def make_async_container(
                 lock_factory=lock_factory,
                 parent_closer=container.__aexit__,
                 parent_getter=container._get,  # noqa: SLF001
+                concurrency=concurrency,
             )
     else:
         while container.registry.scope is not start_scope:
@@ -460,6 +615,7 @@ def make_async_container(
                 lock_factory=lock_factory,
                 parent_closer=container.__aexit__,
                 parent_getter=container._get,  # noqa: SLF001
+                concurrency=concurrency,
             )
     return container
 

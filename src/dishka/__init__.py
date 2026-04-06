@@ -2,8 +2,13 @@ __all__ = [
     "DEFAULT_COMPONENT",
     "STRICT_VALIDATION",
     "AnyOf",
+    "AsyncConcurrencyStrategy",
     "AsyncContainer",
+    "AsyncioSemaphoreStrategy",
+    "AsyncioStrategy",
     "BaseScope",
+    "CompilableAsyncStrategy",
+    "CompilableSyncStrategy",
     "Component",
     "Container",
     "DependencyKey",
@@ -13,6 +18,9 @@ __all__ = [
     "Marker",
     "Provider",
     "Scope",
+    "SyncConcurrencyStrategy",
+    "ThreadPoolStrategy",
+    "TrioStrategy",
     "ValidationSettings",
     "WithParents",
     "activate",
@@ -28,8 +36,20 @@ __all__ = [
 ]
 
 from .async_container import AsyncContainer, make_async_container
+from .concurrency import (
+    AsyncioSemaphoreStrategy,
+    AsyncioStrategy,
+    ThreadPoolStrategy,
+    TrioStrategy,
+)
 from .container import Container, make_container
 from .entities.component import DEFAULT_COMPONENT, Component
+from .entities.concurrency import (
+    AsyncConcurrencyStrategy,
+    CompilableAsyncStrategy,
+    CompilableSyncStrategy,
+    SyncConcurrencyStrategy,
+)
 from .entities.depends_marker import FromDishka
 from .entities.key import DependencyKey, FromComponent
 from .entities.marker import Has, Marker
