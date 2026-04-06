@@ -315,4 +315,4 @@ Pass a strategy via the `concurrency` parameter of `make_container()` or `make_a
 The container analyses the dependency graph, groups factories into topological layers, and runs independent factories
 within each layer concurrently.
 Built-in strategies include `AsyncioStrategy`, `AsyncioSemaphoreStrategy`, `ThreadPoolStrategy`,
-`ProcessPoolStrategy`, and `TrioStrategy`. Requires Python 3.11+.
+and `TrioStrategy`. Requires Python 3.11+.

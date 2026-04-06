@@ -11,7 +11,6 @@ from dishka import (
     AsyncioStrategy,
 )
 from dishka.concurrency._sync import (
-    ProcessPoolStrategy,
     ThreadPoolStrategy,
 )
 from dishka.concurrency._trio import TrioStrategy
@@ -36,7 +35,6 @@ class AsyncStrategy(StrEnum):
 
 class SyncStrategy(StrEnum):
     THREADPOOL = auto()
-    PROCESSPOOL = auto()
 
 
 def make_async_strategy(name: AsyncStrategy) -> object:
@@ -53,8 +51,6 @@ def make_sync_strategy(name: SyncStrategy) -> object:
     match name:
         case SyncStrategy.THREADPOOL:
             return ThreadPoolStrategy()
-        case SyncStrategy.PROCESSPOOL:
-            return ProcessPoolStrategy()
 
 
 @pytest.fixture(params=AsyncStrategy)

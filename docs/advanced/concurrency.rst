@@ -19,8 +19,7 @@ container behaviour is identical to before — fully sequential.
     The **asyncio strategies** (``AsyncioStrategy``,
     ``AsyncioSemaphoreStrategy``) require **Python 3.11+** for
     ``asyncio.TaskGroup`` and ``ExceptionGroup``.
-    ``TrioStrategy`` and the sync strategies
-    (``ThreadPoolStrategy``, ``ProcessPoolStrategy``) work on
+    ``TrioStrategy`` and ``ThreadPoolStrategy`` work on
     **Python 3.10+**.
 
 
@@ -67,8 +66,6 @@ Choosing a strategy
 | Async app (trio)                   | ``TrioStrategy()``            |
 +------------------------------------+-------------------------------+
 | Sync app, I/O-bound factories      | ``ThreadPoolStrategy()``      |
-+------------------------------------+-------------------------------+
-| Sync app, CPU-bound picklable work | ``ProcessPoolStrategy()``     |
 +------------------------------------+-------------------------------+
 
 
@@ -149,23 +146,6 @@ per resolution call.
     container = make_container(
         provider,
         concurrency=ThreadPoolStrategy(executor=executor),
-    )
-
-
-ProcessPoolStrategy
----------------------------
-
-Uses a ``ProcessPoolExecutor``. Factories that are closures (and
-therefore cannot be pickled) automatically fall back to a thread
-pool. Generator factories always run in the calling process.
-
-.. code-block:: python
-
-    from dishka import make_container, ProcessPoolStrategy
-
-    container = make_container(
-        provider,
-        concurrency=ProcessPoolStrategy(),
     )
 
 

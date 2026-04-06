@@ -3,7 +3,6 @@ from dishka.concurrency._asyncio import (
     AsyncioStrategy,
 )
 from dishka.concurrency._sync import (
-    ProcessPoolStrategy,
     ThreadPoolStrategy,
 )
 from dishka.concurrency._trio import TrioStrategy
@@ -16,7 +15,6 @@ __all__ = [
     "AsyncConcurrencyStrategy",
     "AsyncioSemaphoreStrategy",
     "AsyncioStrategy",
-    "ProcessPoolStrategy",
     "SyncConcurrencyStrategy",
     "ThreadPoolStrategy",
     "TrioStrategy",

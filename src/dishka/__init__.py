@@ -16,7 +16,6 @@ __all__ = [
     "FromDishka",
     "Has",
     "Marker",
-    "ProcessPoolStrategy",
     "Provider",
     "Scope",
     "SyncConcurrencyStrategy",
@@ -40,7 +39,6 @@ from .async_container import AsyncContainer, make_async_container
 from .concurrency import (
     AsyncioSemaphoreStrategy,
     AsyncioStrategy,
-    ProcessPoolStrategy,
     ThreadPoolStrategy,
     TrioStrategy,
 )
