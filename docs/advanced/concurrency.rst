@@ -16,9 +16,12 @@ Concurrency is **opt-in**. Without the ``concurrency`` argument,
 container behaviour is identical to before — fully sequential.
 
 .. note::
-    Concurrent creation requires **Python 3.11+** (for
-    ``asyncio.TaskGroup`` and ``ExceptionGroup``). On older versions
-    the container raises at construction time.
+    The **asyncio strategies** (``AsyncioStrategy``,
+    ``AsyncioSemaphoreStrategy``) require **Python 3.11+** for
+    ``asyncio.TaskGroup`` and ``ExceptionGroup``.
+    ``TrioStrategy`` and the sync strategies
+    (``ThreadPoolStrategy``, ``ProcessPoolStrategy``) work on
+    **Python 3.10+**.
 
 
 Enabling concurrency
