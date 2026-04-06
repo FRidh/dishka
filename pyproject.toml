@@ -63,6 +63,7 @@ dev = [
     { include-group = "zizmor" },
     { include-group = "ast-grep" },
     { include-group = "docs" },
+    "pytest-benchmark>=5.2.3",
     "trio>=0.33.0",
 ]
 
