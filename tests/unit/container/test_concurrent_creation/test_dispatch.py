@@ -13,6 +13,8 @@ from dishka import (
     make_async_container,
     provide,
 )
+from dishka.concurrency._asyncio import _compile_asyncio_layer
+from dishka.container_objects import CompiledFactory
 from dishka.entities.key import DependencyKey
 
 A = NewType("A", int)
@@ -236,3 +238,114 @@ class TestUnrecognizedExecutorTag:
             result = await container.get(list[Any])
 
         assert result == [1, 2]
+
+
+class TrackingCompilableAsyncStrategy:
+    """Compilable strategy that records executor tags
+    during compile()."""
+
+    def __init__(self) -> None:
+        self.compiled_tags: list[
+            tuple[DependencyKey, str | None]
+        ] = []
+
+    async def run(
+        self,
+        factories: Sequence[
+            tuple[
+                DependencyKey,
+                Callable[[], Awaitable[object]],
+                str | None,
+            ]
+        ],
+    ) -> Sequence[object]:
+        results: list[object] = [None] * len(factories)
+        for i, (_k, f, _ex) in enumerate(factories):
+            results[i] = await f()
+        return results
+
+    def compile(
+        self,
+        compiled_factories: Sequence[
+            tuple[DependencyKey, CompiledFactory, str | None]
+        ],
+    ) -> CompiledFactory:
+        for dk, _cf, executor in compiled_factories:
+            self.compiled_tags.append((dk, executor))
+        return _compile_asyncio_layer(compiled_factories)
+
+
+class TestCompilePathReceivesExecutorTags:
+    """compile() receives per-factory executor tags."""
+
+    @pytest.mark.asyncio
+    async def test_tags_passed_to_compile(self) -> None:
+        strategy = TrackingCompilableAsyncStrategy()
+
+        class MyProvider(Provider):
+            scope = Scope.APP
+
+            @provide(executor="fast")
+            async def a(self) -> A:
+                return A(1)
+
+            @provide(executor="slow")
+            async def b(self) -> B:
+                return B(2)
+
+            @provide
+            async def root(
+                self, a: A, b: B,
+            ) -> list[Any]:
+                return [a, b]
+
+        container = make_async_container(
+            MyProvider(),
+            concurrency=strategy,
+        )
+        async with container:
+            result = await container.get(list[Any])
+
+        assert result == [1, 2]
+        tags = {
+            (dk.type_hint, ex)
+            for dk, ex in strategy.compiled_tags
+        }
+        assert (A, "fast") in tags
+        assert (B, "slow") in tags
+
+
+class TestCompilePathDefaultTags:
+    """compile() receives None for factories without executor."""
+
+    @pytest.mark.asyncio
+    async def test_no_tag_passes_none(self) -> None:
+        strategy = TrackingCompilableAsyncStrategy()
+
+        class MyProvider(Provider):
+            scope = Scope.APP
+
+            @provide
+            async def a(self) -> A:
+                return A(1)
+
+            @provide
+            async def b(self) -> B:
+                return B(2)
+
+            @provide
+            async def root(
+                self, a: A, b: B,
+            ) -> list[Any]:
+                return [a, b]
+
+        container = make_async_container(
+            MyProvider(),
+            concurrency=strategy,
+        )
+        async with container:
+            result = await container.get(list[Any])
+
+        assert result == [1, 2]
+        for _dk, ex in strategy.compiled_tags:
+            assert ex is None

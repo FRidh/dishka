@@ -60,7 +60,9 @@ class ThreadPoolStrategy:
 
     def compile(
         self,
-        compiled_factories: Sequence[tuple[DependencyKey, CompiledFactory]],
+        compiled_factories: Sequence[
+            tuple[DependencyKey, CompiledFactory, str | None]
+        ],
     ) -> CompiledFactory:
         return _compile_threadpool_layer(
             compiled_factories,
@@ -132,7 +134,9 @@ class ProcessPoolStrategy:
 
     def compile(
         self,
-        compiled_factories: Sequence[tuple[DependencyKey, CompiledFactory]],
+        compiled_factories: Sequence[
+            tuple[DependencyKey, CompiledFactory, str | None]
+        ],
     ) -> CompiledFactory:
         return _compile_threadpool_layer(
             compiled_factories,
@@ -141,7 +145,9 @@ class ProcessPoolStrategy:
 
 
 def _compile_threadpool_layer(
-    compiled_factories: Sequence[tuple[DependencyKey, CompiledFactory]],
+    compiled_factories: Sequence[
+        tuple[DependencyKey, CompiledFactory, str | None]
+    ],
     executor: ThreadPoolExecutor | None,
 ) -> CompiledFactory:
     """Emit a compiled function that dispatches factories
@@ -158,7 +164,7 @@ def _compile_threadpool_layer(
         ex_name = None
 
     factory_names: list[str] = []
-    for i, (_dk, compiled) in enumerate(compiled_factories):
+    for i, (_dk, compiled, _ex) in enumerate(compiled_factories):
         name = builder.global_(compiled, f"factory_{i}")
         factory_names.append(name)
 

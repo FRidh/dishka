@@ -207,6 +207,34 @@ Built-in strategies also provide an optional ``compile()`` method
 that emits optimised code at container creation time. Custom
 strategies can omit it — the container falls back to ``run()``.
 
+The ``compile()`` method receives the same executor tag as
+``run()`` — each tuple is
+``(DependencyKey, CompiledFactory, str | None)``:
+
+.. code-block:: python
+
+    from collections.abc import Sequence
+    from dishka import DependencyKey
+    from dishka.container_objects import CompiledFactory
+
+    class HybridCompileStrategy:
+        async def run(self, factories):
+            ...
+
+        def compile(
+            self,
+            compiled_factories: Sequence[
+                tuple[
+                    DependencyKey,
+                    CompiledFactory,
+                    str | None,
+                ]
+            ],
+        ) -> CompiledFactory:
+            # Route factories to different codegen paths
+            # based on the executor tag.
+            ...
+
 
 Per-factory executor dispatching
 ====================================

@@ -28,7 +28,7 @@ class CompilableAsyncStrategy(AsyncConcurrencyStrategy, Protocol):
     def compile(
         self,
         compiled_factories: Sequence[
-            tuple[DependencyKey, CompiledFactory]
+            tuple[DependencyKey, CompiledFactory, str | None]
         ],
     ) -> CompiledFactory: ...
 
@@ -54,6 +54,6 @@ class CompilableSyncStrategy(SyncConcurrencyStrategy, Protocol):
     def compile(
         self,
         compiled_factories: Sequence[
-            tuple[DependencyKey, CompiledFactory]
+            tuple[DependencyKey, CompiledFactory, str | None]
         ],
     ) -> CompiledFactory: ...

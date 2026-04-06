@@ -41,7 +41,9 @@ class AsyncioStrategy:
 
     def compile(
         self,
-        compiled_factories: Sequence[tuple[DependencyKey, CompiledFactory]],
+        compiled_factories: Sequence[
+            tuple[DependencyKey, CompiledFactory, str | None]
+        ],
     ) -> CompiledFactory:
         return _compile_asyncio_layer(compiled_factories)
 
@@ -85,7 +87,9 @@ class AsyncioSemaphoreStrategy:
 
     def compile(
         self,
-        compiled_factories: Sequence[tuple[DependencyKey, CompiledFactory]],
+        compiled_factories: Sequence[
+            tuple[DependencyKey, CompiledFactory, str | None]
+        ],
     ) -> CompiledFactory:
         return _compile_asyncio_semaphore_layer(
             compiled_factories,
@@ -94,7 +98,9 @@ class AsyncioSemaphoreStrategy:
 
 
 def _compile_asyncio_layer(
-    compiled_factories: Sequence[tuple[DependencyKey, CompiledFactory]],
+    compiled_factories: Sequence[
+        tuple[DependencyKey, CompiledFactory, str | None]
+    ],
 ) -> CompiledFactory:
     """Emit a compiled function that dispatches factories
     concurrently via asyncio.TaskGroup."""
@@ -106,7 +112,7 @@ def _compile_asyncio_layer(
     )
 
     factory_names: list[str] = []
-    for idx, (_dk, compiled) in enumerate(
+    for idx, (_dk, compiled, _ex) in enumerate(
         compiled_factories,
     ):
         name = builder.global_(compiled, f"factory_{idx}")
@@ -149,7 +155,9 @@ def _compile_asyncio_layer(
 
 
 def _compile_asyncio_semaphore_layer(
-    compiled_factories: Sequence[tuple[DependencyKey, CompiledFactory]],
+    compiled_factories: Sequence[
+        tuple[DependencyKey, CompiledFactory, str | None]
+    ],
     max_concurrent: int,
 ) -> CompiledFactory:
     """Emit a compiled function that dispatches factories
@@ -163,7 +171,7 @@ def _compile_asyncio_semaphore_layer(
     max_c = builder.global_(max_concurrent, "max_concurrent")
 
     factory_names: list[str] = []
-    for idx, (_dk, compiled) in enumerate(
+    for idx, (_dk, compiled, _ex) in enumerate(
         compiled_factories,
     ):
         name = builder.global_(compiled, f"factory_{idx}")

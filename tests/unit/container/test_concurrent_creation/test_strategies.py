@@ -7,6 +7,7 @@ Sync strategies (threadpool, processpool) use make_container.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Iterator
+from typing import Any
 
 import pytest
 import trio as _trio
@@ -434,3 +435,72 @@ class TestSyncCodegenParity:
         strategy = make_sync_strategy(sync_strategy_name)
         result = _resolve_sync(P(), Root, strategy)
         assert result == [10, 20]
+
+
+# ── executor tag tests (codegen path) ───────────────────────────────
+
+
+class TestAsyncExecutorTagCodegen:
+    """Per-factory executor tags work through codegen for all
+    async strategies."""
+
+    @pytest.mark.asyncio()
+    async def test_tagged_factories(
+        self, async_strategy_name: AsyncStrategy,
+    ) -> None:
+        class P(Provider):
+            scope = Scope.APP
+
+            @provide(executor="fast")
+            async def a(self) -> A:
+                return A(1)
+
+            @provide(executor="slow")
+            async def b(self) -> B:
+                return B(2)
+
+            @provide
+            async def root(
+                self, a: A, b: B,
+            ) -> Root:
+                return Root([a, b])
+
+        strategy = make_async_strategy(async_strategy_name)
+        if _is_trio(async_strategy_name):
+            result = _trio.run(
+                _resolve_async, P(), Root, strategy,
+            )
+        else:
+            result = await _resolve_async(
+                P(), Root, strategy,
+            )
+        assert result == [1, 2]
+
+
+class TestSyncExecutorTagCodegen:
+    """Per-factory executor tags work through codegen for all
+    sync strategies."""
+
+    def test_tagged_factories(
+        self, sync_strategy_name: SyncStrategy,
+    ) -> None:
+        class P(Provider):
+            scope = Scope.APP
+
+            @provide(executor="fast")
+            def a(self) -> A:
+                return A(1)
+
+            @provide(executor="slow")
+            def b(self) -> B:
+                return B(2)
+
+            @provide
+            def root(
+                self, a: A, b: B,
+            ) -> Root:
+                return Root([a, b])
+
+        strategy = make_sync_strategy(sync_strategy_name)
+        result = _resolve_sync(P(), Root, strategy)
+        assert result == [1, 2]

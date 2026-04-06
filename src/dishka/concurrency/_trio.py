@@ -43,7 +43,9 @@ class TrioStrategy:
 
     def compile(
         self,
-        compiled_factories: Sequence[tuple[DependencyKey, CompiledFactory]],
+        compiled_factories: Sequence[
+            tuple[DependencyKey, CompiledFactory, str | None]
+        ],
     ) -> CompiledFactory:
         import trio  # noqa: PLC0415
 
@@ -58,7 +60,7 @@ class TrioStrategy:
         )
 
         factory_names: list[str] = []
-        for idx, (_dk, compiled) in enumerate(
+        for idx, (_dk, compiled, _ex) in enumerate(
             compiled_factories,
         ):
             name = builder.global_(

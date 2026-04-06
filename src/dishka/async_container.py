@@ -379,9 +379,7 @@ class AsyncContainer:
 
         strategy = self._concurrency
         if isinstance(strategy, CompilableAsyncStrategy):
-            layer_fn = strategy.compile(
-                [(dk, c) for dk, c, _ex in compiled_pairs],
-            )
+            layer_fn = strategy.compile(compiled_pairs)
             await layer_fn(
                 self.parent_getter,
                 self._exits,
